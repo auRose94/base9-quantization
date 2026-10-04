@@ -1,0 +1,7 @@
+python 3.14.7 | Linux-7.2.8-1-cachyos-bore-x86_64-with-glibc2.44
+numpy 2.5.3 | torch 2.14.0 | device cuda (NVIDIA GeForce RTX 5060 Ti)
+transformers 5.15.0 | datasets 5.0.1
+model roneneldan/TinyStories-33M | 68,514,048 dedup params, 28,311,552 linear (quantized), 40,202,496 fp32 side info
+eval: 300 blocks x 1024 tokens, batch 8 | deterministic PTQ
+NOTE: model name says 33M but dedup param count is what it is — the repo's
+embedding table dominates; linear-body params are the quantized share.

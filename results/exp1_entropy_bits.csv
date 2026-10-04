@@ -1,0 +1,5 @@
+scheme,levels,raw_bits,alphabet_bits,entropy,rans,mse,note
+int8 symmetric,255,8.0,7.994353436858858,6.714955658880902,7.43952,0.00012884575450883986,GGUF Q8-style baseline
+int4 symmetric (15 levels),15,4.0,3.9068905956085187,2.5644731987441136,2.59432,0.042465745695936905,GGUF Q4-style baseline
+ternary absmean (BitNet b1.58-style),3,2.0,1.584962500721156,1.5832894955700652,1.5836,0.26441296038093876,"ternary pair stream (2 trits -> 1 base-9 digit): joint entropy 1.5833 b/param, rANS on pair stream 1.5836 b/param"
+9-level ninths grid (step m/4),9,4.0,3.169925001442312,1.8143323225852201,1.83076,0.12968148254514691,k/9·(9m/4); k/9 = 0.kkk... repeating in base 10

@@ -1,0 +1,3 @@
+variant,ppl,total_MB,body_MB,embed_MB,rest_MB,body_digits_rans,body_mse
+RTN,54.781,45.5,11.3,34.0,0.13,2.701,0.03690
+GPTQ,44.961,45.5,11.4,34.0,0.13,2.709,0.05053

@@ -1,0 +1,2 @@
+k_body,k_embed,scale_mode,file_MB,bits_per_param,entropy_est_MB,encode_s,decode_s,code_ppl_ref,code_ppl_decoded,max_weight_err
+63,99,ent8,1112.0,5.763,1112.0,8,25,4.4995,4.4995,1.42e-02

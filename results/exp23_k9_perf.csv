@@ -1,0 +1,7 @@
+threads,encode_s,file_bytes,sha256_12
+1,8.34,1112015974,f0a1f69e892a
+4,3.98,1112015974,f0a1f69e892a
+24,3.81,1112015974,f0a1f69e892a
+stream_decode_s,22.51,,
+digit_mismatches,0,,
+peak_rss_gb,15.27,,

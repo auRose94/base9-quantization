@@ -1,0 +1,18 @@
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (34304 > 32768). Running this sequence through the model will result in indexing errors
+  godot 4: 20,003 files, 15,653,267 tok
+  godot 3: 20,077 files, 14,688,435 tok
+  godot 4: 40,052 files, 29,818,862 tok
+  godot 4: 60,053 files, 44,408,651 tok
+  godot 3: 40,022 files, 32,657,435 tok
+  godot 4: 80,008 files, 61,168,703 tok
+  godot 4: 100,029 files, 77,172,721 tok
+
+model: Qwen/Qwen2.5-Coder-7B-Instruct | min_block 0
+  godot  1:     1 projects     734 files     2,734,519 chars       667,055 tokens (0.244 tok/char)
+           file tokens: p50   411 p90   2229 p99    6921 max    23771 | >=256 tok: 466
+  godot  3:  1940 projects   55488 files   157,614,648 chars    43,064,622 tokens (0.273 tok/char)
+           file tokens: p50   267 p90   1551 p99    8243 max   590940 | >=256 tok: 28,510
+  godot  4:  3231 projects  114250 files   349,220,713 chars    90,967,469 tokens (0.260 tok/char)
+           file tokens: p50   305 p90   1802 p99    7217 max   569447 | >=256 tok: 63,265
+
+Godot-4 training tokens (exact): 90,967,469

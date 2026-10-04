@@ -1,0 +1,10 @@
+variant,ppl,note
+fp32 pretrained,40.663,window A reference
+"fp32 pretrained, TRAIN-format windows",36.416,format diagnostic
+PTQ body9,54.679,PTQ baseline
+PTQ embed99+body9,54.781,PTQ baseline
+PTQ ternary-g64+embed99,989.767,PTQ baseline
+CONTROL (fp32 adapted),4.591,2000 steps
+QAT-RECIPE body9+embed99,4.886,2000 steps
+QAT-TERN ternary+embed99,5.980,2000 steps
+QAT-TERN pair-codec b/param,1.584,single-stream 1.585
