@@ -6,7 +6,255 @@ honest.
 
 ---
 
-## 2026-10-04, session 21 — GPTQ at 7B on the coarse grid (exp26 k=9): also a null
+## 2026-10-05, session 24 — K9 runs in llama.cpp: `.k9`-in-GGUF, decode-on-load, exact Q8_0 materialization, both GPUs
+
+**What this is.** K9's "missing runtime piece" — a serving stack. Fork of upstream
+llama.cpp at `/home/rose/Work/llama.cpp` (branch `k9`, single commit `14490cf2d`
+over upstream `c25030496`), built for CPU / CUDA 13.4 (5060 Ti) / HIP gfx1100
+(7900 XT). llama-cli and llama-server serve our `.k9` models through an
+OpenAI-completions endpoint; perplexity harness runs on the same binaries.
+
+**Design, stage 1 (disk layer).** GGUF v3 derives every tensor's byte length from
+type×shape, so a variable-length rANS stream cannot be a plain tensor. Fix in the
+fork: a loader-only sentinel type `GGML_TYPE_K9 = 43` (`blck_size=1, type_size=1`
+→ `ggml_nbytes()` = ne[0] = blob length); per-tensor metadata rides in one KV key
+`k9.directory` (name, rank+shape, k, group, scale_mode, perm_flag, segment sizes).
+The exporter `experiments/export_k9_gguf.py` re-embeds `.k9` blobs **verbatim**
+(no requantization) on top of a `convert_hf_to_gguf.py` f16 skeleton that supplies
+norms/biases/tokenizer. `llama-model-loader` decodes on load into the destination
+type; tensors that offload to GPU decode straight into VRAM, CPU tensors get one
+writable host buffer (they must never alias the read-only mmap).
+
+**The exactness theorem (why quality claims survive).** K9 dequant is
+`w = m·(d−H)/H`, `H=(k−1)//2` — a *scaled integer*. Q8_0's per-32-block scale can
+be set to `m/H` exactly and its int8 code to `d−H ∈ [−H, H] ⊂ [−49, 49]` (2.6×
+headroom), so Q8_0 materialization of every k family is **lossless modulo the
+fp16 rounding of the block scale** (≤ 4.9e-4 relative), which is finer-grained
+than k99's own grid spacing. This also resolves the GGUF transpose trap
+*for free*: GGUF stores all linears/embeddings transposed vs torch, and the
+Q8_0 block structure (per out-row, chunks along in-dim) aligns exactly with K9's
+per-out-row 64-group scales — only an index permutation of digits.
+
+**Gates (all green).**
+1. `examples/k9probe` + `experiments/k9_llamacpp_gate.py`, C++ decode vs `k9.py`:
+   digits **bit-exact**, scales **0 ulp** (`exp2` f64 identical), materialized
+   q8_0 **byte-exact** vs a numpy replica — on 1.5B k63 (linears + k99 embed),
+   tuned 7B k15 (linears + untied embed/head k99), and GPTQ-act-order k15
+   (perm tensors: F16 path, max|Δ| = 9.6e-5 ≤ fp16 bound).
+2. llama-perplexity, wikitext-2-raw test (full set, same corpus; 5060 Ti
+   otherwise noted):
+
+| model | variant | file GB | ppl |
+|---|---|---|---|
+| 1.5B base | f16 | 3.09 | 13.88 ± 0.110 |
+| 1.5B base | **K9 k63 + embed99** | **1.119** | **13.90 ± 0.110** |
+| 1.5B base | q4_k_m | 1.117 | 14.70 ± 0.118 |
+| 1.5B base | q8_0 | 1.895 | 14.29 ± 0.114 |
+| 7B tuned | q8_0 | 8.10 | 9.231 ± 0.064 |
+| 7B tuned | **K9 k63 + embed99** | **5.47** | **9.253 ± 0.065** |
+| 7B tuned | q4_k_m | 4.68 | 9.365 ± 0.066 |
+| 7B tuned | K9 k15 + embed99 | 3.75 | 9.623 ± 0.068 |
+| 14B tuned | q8_0 | 15.70 | 7.805 ± 0.052 |
+| 14B tuned | **K9 k63 + embed99** | **10.49** | **7.823 ± 0.052** (7900 XT) |
+
+The exp20 1.5B claim reproduces inside llama.cpp end-to-end: **K9 k63
+≈ f16 in ppl at exactly q4_k_m's size; q4_k_m pays +0.80**. At 7B/14B the
+materialization-exactness prediction holds (K9-k63 vs q8_0: +0.021 ± 0.065 and
++0.018 ± 0.052 — within noise). Note the 1.5B q8_0/q4_k_m rows are the *base*
+model (cached HF quants), 7B/14B rows use `llama-quantize` on our merged skeletons.
+
+3. Serving: CPU 16.4 t/s (1.5B, 8 thr); 5060 Ti CUDA 109.4 t/s (1.5B k63);
+   7900 XT HIP 35.6 t/s (14B k63); `llama-server` OpenAI chat completions work
+   for both cards.
+
+**Bugs found in our own code (pre-existing, worth fixing upstream in the repo):**
+`k9.load_into` (chat_k9's path) **crashes on full-width-perm GPTQ records**
+(`q[:, argsort(perm)]` on a 3-D grouped view; exp26's perms are full column
+width, plen = 4·c — empirically confirmed on `qwen7b_gptq_k15_embed99.k9`);
+`k9.decode_tensor` is correct and is the semantics the C++ loader implements.
+The 14B overnight run (session 23's log) finished ~06:23 and the 7900 XT is idle.
+
+**Caveats.** Decode-on-load is serial per tensor (byte renorm reads backwards from
+stream end; whole blob must be contiguous): measured ~150 s total load for the
+7B tuned k15 GGUF (≈ 7e9 digits incl. table build; 210 M sym/s single-thread).
+Per-tensor-thread decode (exp23's pattern) is the obvious optimization. GPTQ
+permuted tensors materialize as F16 (fatter; the production tuned artifacts are
+RTN and unaffected). `general.file_type`/ftype labels ignore K9 (cosmetic).
+Docs/04 §5.2 remains stale vs `k9.py`'s record layout (now also in the fork's
+`src/k9.h`); add a `k9.directory` note to docs/04 next session.
+
+**Next (stage 2 of the plan).** Resident digit-container types (K9_4/K9_6/K9_7,
+superblock 256 = 4×64 groups, fp16 `m/H` scales → 4.1/6.1/7.1 b/param) with CPU
+vec_dot + CUDA/HIP MMVQ kernels (the chat-batch fused dequant+GEMM), then the
+tok/s benchmark matrix vs q6_K/q4_K_M on both cards; PR packaging behind that
+(container type is the upstreamable artifact; the rANS KV layer stays fork-only
+research). 14B at a K9_4 container ≈ 6.9 GiB would finally fit the 5060 Ti.
+
+
+---
+
+## 2026-10-05, session 23 — the 14B night run: K9 ppl-free at k63 again; the lr-1e-4 recipe regresses the mechanical eval; chunked-CE fix
+
+**What ran** (phase2/overnight_14b.sh, done 02:31): Qwen2.5-Coder-14B-Instruct
+(14.84 B; 48 layers, hidden 5120, GQA 40q/8kv, untied head, 152k vocab) 1-epoch
+QLoRA on the 7900 XT (RDNA3/ROCm 7.2), batch 1 × accum 16, seq 2048, r=16 — the
+7B recipe unchanged, after a chunked-CE fix (below). 3,904 steps in 234.8 min
+(cold start ~13.8 s/step, ~3.6 s/step average).
+
+**The chunked-CE fix (recipe-preserving, now in train_qlora.py).** The 14B
+OOM'd at batch 1 on the 20 GB card **in backward**: HF's ForCausalLMLoss upcasts
+the full [B,S,152064] logits to fp32, spiking ~2.5–3 GB past a base already at
+~17 GiB. `chunked_loss()` builds logits per 256-position chunk inside
+`torch.utils.checkpoint` (transient ~0.4 GB) — the same mean-over-masked CE;
+validated **identical to HF's loss to 5 decimals** at batch 1 × seq 2048
+(0.9293 vs 0.9293, gradients flow). This is the same wall that killed batch-8
+7B training in the afternoon; the fix unblocks both.
+
+**K9 containers at 14B** (merged tuned bf16 dir, CPU, ~4 min each) and CPU ppl
+(one pass, paired windows, same process):
+
+| tuned 14B | MB | b/param |
+|---|---|---|
+| bf16 host | 29518 | 16.0 |
+| k9 + embed99 | 5728.0 (3.103) | +0.302 ± 0.037 code ppl |
+| k15 + embed99 | 7004.4 (3.794) | +0.099 ± 0.019 |
+| **k63 + embed99** | **10480.4 (5.677)** | **+0.005 ± 0.006 (wiki +0.039 ± 0.017)** |
+
+bf16 refs: code 2.947 / wiki 7.524. Every grid's penalty **shrank again with
+scale** (k15 7B +0.117 → 14B +0.099; k9 +0.380 → +0.302), and **k63 is
+ppl-measurement-free at 1.5B, 7B and 14B** — the frontier's "essentially loses
+nothing" corner is now replicated three times.
+
+**The mechanical eval regressed at 14B — the ladder's first negative result.**
+Draws-3 (NF4-hosted: a 14B bf16 host fits no local card): base 54.2% vs tuned
+50.0% correct; greedy (the 1.5B/7B ladder protocol): tuned 14B = **45.8%**
+(parses 58.3%) vs the tuned 7B's 83.3%. The failure profile is a **style**
+regression, not knowledge: api 95.8% (draws) / 87.5% (greedy) and no_godot3
+100% — more Godot-4 API precision than any other run in the repo — but replies
+got TERSE (median 174 chars vs base 314) and 5 of 13 failures are
+top-level-statement fragments ("Unexpected 'match'/'for'/'print' in class
+body") — the 1.5B-era shape bug the 7B had largely repaired. Prime suspect:
+**lr 1e-4 is too hot for a 14.7 B-body LoRA over 62k short-corpus samples in
+one epoch** — val loss 0.6171 is the *lowest* of the three scales
+(1.5B 0.7310 / 7B 0.6604 / 14B 0.6171) while `correct` goes 50.0 / 83.3 / 45.8:
+**held-out corpus loss stopped predicting the mechanical score** once the
+model's base knowledge was high and its output style dominated what fails.
+
+**Night-cap result (done 06:23): 14B @ lr 3e-5 — the fix holds.** Same
+everything (1 epoch, r=16, seq 2048, 212.9 min): val 0.8510 → 0.6309; **greedy
+(ladder protocol) 70.8% correct (parses 79.2%, api 91.7%, no_godot3 100%)** —
++25 points over the lr-1e-4 run's 45.8% — and **draws-3 79.2% (parses 87.5%)**
+vs the lr-1e-4 draws-3 50.0%. Same-protocol ladder (draws-3): 1.5B 50.0
+(bf16) / 7B 75.0 (bf16) / 14B **79.2 (NF4)** — the 14B tops the ladder, and the
+LR rule is now: **1.5B and 7B trained well at lr 1e-4; 14B wants ~3e-5** (the
+1e-4 run's low val loss was over-styling, exactly as diagnosed). Open for next:
+is there an intermediate-LR optimum (5e-5) at 14B, and does an lr-scaled run
+lift 7B past 83.3? Both are single-evening runs.
+
+**Ops lessons (don't re-discover):** (a) a `&`-child started inside a finishing
+Bash-call task gets reaped — long-lived servers must be their own
+background task; (b) **chat_k9's preset variant paths were cwd-relative** —
+launching from phase2/ silently dropped every K9 variant (a "1-variant" bf16
+chat that looks like a success; two chat deaths traced to it) — fixed by
+anchoring preset paths to the file's directory in main(); (c) the harness task
+shell surviving/killing orphans behaved inconsistently across launches — verify
+by PID + `/state`, not by task-exit codes.
+
+**Artifacts:** `out/qlora_14b{,_lr3e5}/`, `out/merged_14b/` (29.5 GB),
+`results/qwen14b_tuned_{k9,k15,k63}_embed99.k9`, `out/ppl_14b.log`,
+`out/eval_*14b*/{summary.json,jsonl}`, `phase2/{overnight_14b,overnight_14b_lr3e5}.sh`,
+`phase2/ppl_check_k9.py` (now `--model/--cpu/--prefix`).
+
+---
+
+## 2026-10-04, session 22 — Phase 2 at 7B: the verified-corpus QLoRA scales — 83.3% correct in 94 min, shipped as a 3.1 GB K9 file
+
+**What was asked.** "Can we make a larger model with this technology?" — scale the
+Phase-2 fine-tune from the 1.5B (50.0% correct, see `phase2/README.md`) to
+Qwen2.5-Coder-7B-Instruct, on the same 63,565-sample verified corpus, the same
+24-task mechanical eval, r=16 LoRA on every projection, 1 epoch, lr 1e-4 OneCycle —
+the full recipe unchanged.
+
+**A second GPU entered service this session.** rose asked whether the RX 7900 XT
+(20 GB, RDNA3, ROCm 7.2.4 stack already installed) helps and whether both cards
+can be used. Answers established by measurement (`.venv-rocm`: torch 2.14.0+rocm7.2
++ bitsandbytes 0.50.2 + peft — all pinned to the versions `.venv-baselines` uses):
+
+- **bitsandbytes NF4 works on gfx1100.** The 3-step `train_qlora.py` smoke ran
+  end-to-end on the 7900 XT (losses, val eval, adapter written). Eval and K9-load
+  generation run fine on ROCm too (greedy, same eval flow).
+- **But the 7B train OOM'd there — on the loss, not the weights.** Qwen2.5-Coder-7B's
+  untied 152,064-way head at batch 8 × 2048 creates a ~5 GB bf16 logits tensor and
+  the CE path upcasts it (~10 GB in float32): `CrossEntropyLoss` tried to allocate
+  7.99 GiB with 15.56 GiB already held. That is an HF-API wall independent of the
+  backend (a chunked-CE forward would fix it; not attempted this session — keeping
+  the recipe identical was worth more than the batch gain).
+- **So the roles split, and both cards ran the whole session without conflict:**
+  the 5060 Ti (CUDA) trained (batch 1 × accum 16 — the exact 1.5B recipe shape);
+  the 7900 XT evaluated checkpoints and ran the K9 work; the CPU did the merge and
+  the K9 re-quantization (7.6 B weights quantized + entropy-rANS-encoded in
+  **~100 s per config on 24 cores**). LM Studio's idle loaded model was unloaded
+  to free both cards (restore = one click in the app).
+
+**Training result (94.3 min, 1.24–1.35 s/step):**
+
+| 7B run | parses | api | no Godot 3 | **correct** | val loss |
+|---|---|---|---|---|---|
+| bf16 base | 45.8% | 58.3% | 70.8% | 25.0% | 0.9039 |
+| QLoRA step 400 | 54.2% | 75.0% | 95.8% | 45.8% | — |
+| QLoRA step 800 | 58.3% | 91.7% | 100.0% | 58.3% | — |
+| QLoRA step 1200 | 75.0% | 91.7% | 100.0% | 75.0% | — |
+| QLoRA step 2000 | 62.5% | 87.5% | 100.0% | 58.3% | — |
+| QLoRA step 2400 | 83.3% | 83.3% | 100.0% | 70.8% | — |
+| **QLoRA 1 epoch (3,904 steps)** | **87.5%** | **91.7%** | **100.0%** | **83.3%** | **0.6604** |
+
+The 7B passes the 1.5B's final score (50.0%) **before 20% of its own epoch**
+(step 800: 58.3%) and tops out at **+33 points over the same-corpus 1.5B tune**.
+Held-out val loss 0.9039 → 0.6604 (−27%; the 1.5B went 1.1065 → 0.7310). The
+pre-fine-tune base is already twice as capable (25.0% vs 12.5%), so part of the
+gain is the better base — but the *training* still converted it into mechanically
+correct Godot 4 code (24/24 replies now free of Godot-3 API; the 1.5B failed
+12/24 at its end, the 7B fails 4/24).
+
+**The remaining failures are the same residual family, smaller:** 
+`PhysicsServer2D.RAYCAST_MODE_CLOSEST` (wrong constant), `get_process_fps()`
+without `Engine.`, one api-miss on `class_name`, and one top-level-statement
+fragment (`dictionary_iter`). Version confusion is gone; what is left is argument
+and member semantics plus script completeness — the same ordering the 1.5B
+analysis gave (semantics, then more data), now at an 83% mechanical pass.
+
+**K9 on the tuned model — quantization cost is unchanged by fine-tuning.**
+`phase2/quantize_k9.py` (exp24's verified writer, pointed at the merged dir,
+CPU-only) rebuilt the containers from the tuned bf16 weights: k9+embed99 =
+**3103.9 MB (3.261 b/param)** and k15+embed99 = 3740.1 MB — within 0.2% of the
+base-model files (LoRA deltas are tiny and barely shift digit entropy).
+Perplexity on the exp24 windows, loaded back with `k9.load_into` and measured
+in the same process (`phase2/ppl_check_k9.py`):
+
+| tuned 7B | code ppl | Δcode (paired) | Δwiki (paired) |
+|---|---|---|---|
+| bf16 | 3.410 | — | — |
+| k15+embed99 | 3.527 | +0.117 ± 0.020 | +0.468 ± 0.102 |
+| k9+embed99 | 3.790 | +0.380 ± 0.055 | +1.436 ± 0.266 |
+
+These reproduce exp24's base-model deltas (+0.117 / +0.374) almost digit for
+digit — fine-tuning neither amplified nor reduced the quantization penalty.
+On the 24-task eval the k9-quantized tuned model scored **the same 83.3% as
+bf16** (same 20/24 tasks), while k15 drew 62.5% — the per-task flips scatter in
+both directions and the metric's SE at n=24 is ±9 points, so the reliable
+comparator is the ppl table above, not single-eval draws.
+
+**Artifacts:** `phase2/out/qlora_7b/` (adapter + train logs), `out/merged_7b/`
+(bf16, 15.2 GB), `results/qwen7b_tuned_{k9,k15}_embed99.k9`,
+`phase2/{quantize_k9,ppl_check_k9}.py`, eval jsonl/summaries per checkpoint
+(`out/eval_tuned7b_*`), and `.venv-rocm/` as the ROCm training/eval env.
+**Next:** the two open levers at this quality level are (a) semantic-error data
+(the verifier can mint argument-correct samples) and (b) serving — the tuned
+model already runs through `chat_k9.py` at 3.1 GB; a fused dequant+GEMM kernel
+remains the missing runtime piece for speed. Phase 3 (full QAT / >7B) still
+wants the cloud card.
+
+---
 
 **Hypothesis being tested.** Session 20 explained the 7B GPTQ null as "the penalty
 is already small at k=15". The load-bearing counter-case: at 1.5B the *largest*

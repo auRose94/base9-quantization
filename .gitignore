@@ -36,3 +36,6 @@ phase2/out/
 
 # OS noise
 .DS_Store
+
+# big llama.cpp fork artifacts (session 24)
+results/*.gguf
