@@ -166,13 +166,17 @@ def extract_code(reply: str) -> str:
     return (m.group(1) if m else reply).strip()
 
 
-def gen(model, tok, device, prompt, max_new=640):
+def gen(model, tok, device, prompt, max_new=640, sampling=None):
     msgs = [dict(role="system", content=SYSTEM), dict(role="user", content=prompt)]
     text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
     enc = tok(text, return_tensors="pt").to(device)
     with torch.no_grad():
-        out = model.generate(**enc, max_new_tokens=max_new, do_sample=False,
-                             pad_token_id=tok.pad_token_id or tok.eos_token_id)
+        kw = dict(max_new_tokens=max_new, do_sample=False,
+                  pad_token_id=tok.pad_token_id or tok.eos_token_id)
+        if sampling:                       # multi-draw mode: sample, majority-vote
+            kw.update(do_sample=True, temperature=sampling["temperature"],
+                      top_p=sampling["top_p"], top_k=sampling["top_k"])
+        out = model.generate(**enc, **kw)
     return tok.decode(out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True)
 
 
@@ -184,16 +188,43 @@ def main() -> int:
     ap.add_argument("--tag", default="run")
     ap.add_argument("--out", default=None)
     ap.add_argument("--max-new", type=int, default=640)
+    ap.add_argument("--draws", type=int, default=1,
+                    help="draws per task. 1 = the historical greedy decode "
+                         "(backward compatible); N>1 = decoded at temperature/"
+                         "top_p/top_k with majority voting per check, which "
+                         "measures capability instead of one greedy knife-edge "
+                         "(single greedy draws flipped ~5/24 tasks between "
+                         "near-identical quantized models)")
+    ap.add_argument("--temperature", type=float, default=0.7)
+    ap.add_argument("--top-p", type=float, default=0.8)
+    ap.add_argument("--top-k", type=int, default=20)
     ap.add_argument("--runtime", action="store_true",
                     help="also instantiate+run each reply (slower, stronger)")
     ap.add_argument("--tasks", help="comma-separated task ids to run")
+    ap.add_argument("--nf4", action="store_true",
+                    help="load the base in 4-bit NF4 — for models too large for "
+                         "a bf16 host (14B+). K9 load and NF4 are mutually "
+                         "exclusive (the K9 path needs the bf16 host)")
     a = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
+    if a.k9 and a.nf4:
+        print("--k9 and --nf4 are mutually exclusive: the K9 path replaces "
+              "decoder tensors in a bf16 host")
+        return 2
     tok = AutoTokenizer.from_pretrained(a.model)
-    model = AutoModelForCausalLM.from_pretrained(
-        a.model, dtype=torch.bfloat16, low_cpu_mem_usage=True,
-        attn_implementation="sdpa").to(dev).eval()
+    if a.nf4:
+        from transformers import BitsAndBytesConfig
+        model = AutoModelForCausalLM.from_pretrained(
+            a.model, quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True),
+            low_cpu_mem_usage=True, attn_implementation="sdpa").eval()
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            a.model, dtype=torch.bfloat16, low_cpu_mem_usage=True,
+            attn_implementation="sdpa").to(dev).eval()
     if a.k9:
         import k9
         t0 = time.time()
@@ -217,39 +248,61 @@ def main() -> int:
 
     out = Path(a.out) if a.out else HERE / "out" / f"eval_{a.tag}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
+    sampling = None if a.draws == 1 else dict(
+        temperature=a.temperature, top_p=a.top_p, top_k=a.top_k)
     rows = []
-    agg = dict(tasks=0, parses=0, api=0, no_godot3=0, correct=0)
+    agg = dict(tasks=0, parses=0, api=0, no_godot3=0, correct=0,
+               draw_correct=0, total_draws=0)
     t0 = time.time()
     with GodotVerifier(workdir=str(HERE / "data" / "eval_proj")) as v, open(out, "w") as fo:
         for t in tasks:
-            reply = gen(model, tok, dev, t["prompt"], a.max_new)
-            code = extract_code(reply)
-            low = code.lower()
-            r = v.check_runtime(code, name=t["id"]) if a.runtime else v.check_parse(code, t["id"])
-            forb = g3_hits(code) + [x for x in t["must_not"] if x.lower() in low]
-            checks = dict(
-                parses=r.status == OK,
-                api=all(x.lower() in low for x in t["must"]),
-                no_godot3=not forb,
-            )
+            ds = []
+            for _ in range(a.draws):
+                reply = gen(model, tok, dev, t["prompt"], a.max_new, sampling)
+                code = extract_code(reply)
+                low = code.lower()
+                r = v.check_runtime(code, name=t["id"]) if a.runtime else v.check_parse(code, t["id"])
+                forb = g3_hits(code) + [x for x in t["must_not"] if x.lower() in low]
+                ds.append(dict(status=r.status, chars=len(code),
+                               parses=r.status == OK,
+                               api=all(x.lower() in low for x in t["must"]),
+                               no_godot3=not forb,
+                               forbidden=forb,
+                               missing=[x for x in t["must"] if x.lower() not in low],
+                               errors=[e["message"][:110] for e in r.errors[:3]],
+                               code=code))
+            # majority per check (ties → False; odd --draws has no ties)
+            checks = {k: sum(d[k] for d in ds) * 2 > len(ds)
+                      for k in ("parses", "api", "no_godot3")}
             checks["correct"] = all(checks.values())
             agg["tasks"] += 1
             for k in ("parses", "api", "no_godot3", "correct"):
                 agg[k] += checks[k]
-            row = dict(tag=a.tag, id=t["id"], status=r.status, chars=len(code),
-                       errors=[e["message"][:110] for e in r.errors[:3]],
-                       missing=[s for s in t["must"] if s.lower() not in low],
-                       forbidden=forb,
-                       code=code, **checks)
+            agg["draw_correct"] += sum(d["parses"] and d["api"] and d["no_godot3"]
+                                       for d in ds)
+            agg["total_draws"] += len(ds)
+            best = next((d for d in ds if d["parses"] and d["api"] and d["no_godot3"]),
+                        max(ds, key=lambda d: (d["parses"], d["api"])))
+            row = dict(tag=a.tag, id=t["id"], status=best["status"],
+                       chars=best["chars"], errors=best["errors"],
+                       missing=best["missing"], forbidden=best["forbidden"],
+                       code=best["code"], draws=a.draws,
+                       draw_results=[{k: v for k, v in d.items() if k != "code"}
+                                     for d in ds],
+                       **checks)
             rows.append(row)
             fo.write(json.dumps(row) + "\n")
             fo.flush()
             flag = "OK " if checks["correct"] else ("~  " if checks["parses"] else "BAD")
-            print(f"  [{flag}] {t['id']:18s} {r.status:12s}"
-                  f" miss={row['missing'][:2]} forbid={row['forbidden'][:2]}", flush=True)
+            print(f"  [{flag}] {t['id']:18s} {best['status']:12s}"
+                  f" {sum(d['parses'] for d in ds)}/{a.draws} parse |"
+                  f" {sum(d['api'] for d in ds)}/{a.draws} api", flush=True)
 
     n = max(agg["tasks"], 1)
     summary = dict(tag=a.tag, model=a.model, adapter=a.adapter, k9=a.k9,
+                   draws=a.draws,
+                   draw_correct_pct=round(100 * agg["draw_correct"]
+                                          / max(agg["total_draws"], 1), 1),
                    seconds=round(time.time() - t0),
                    **{k: agg[k] for k in ("tasks", "parses", "api", "no_godot3", "correct")},
                    **{f"{k}_pct": round(100 * agg[k] / n, 1) for k in

@@ -261,6 +261,69 @@ So the ordering of remaining work is: (1) the fragment/complete-script shape,
 (2) argument-count and built-in-member semantics, (3) more data. None of these is
 a Godot-3 problem any more.
 
+### Scaled: the 7B (same corpus, same recipe — see RESEARCH_LOG session 22)
+
+`train_qlora.py` is model-agnostic; the full 7.6B Qwen2.5-Coder-7B-Instruct epoch
+on the identical corpus took 94.3 min (~1.3 s/step) on a 16 GB CUDA card
+(batch 1 × accum 16 — bigger batches OOM on the loss, not the weights: Qwen's
+152k-vocab logits + float32 CE upcast need ~15 GB at batch 8 × 2048).
+
+| 7B run | parses | api | no Godot 3 | **correct** | val loss |
+|---|---|---|---|---|---|
+| bf16 base | 45.8% | 58.3% | 70.8% | 25.0% | 0.9039 |
+| **QLoRA 1 epoch (3,904 steps)** | **87.5%** | **91.7%** | **100.0%** | **83.3%** | **0.6604** |
+| tuned, K9 k9+embed99 (see below) | 87.5% | 87.5% | 95.8% | 83.3% | — |
+| tuned, K15+embed99 (eval-draw noise, see log) | 66.7% | 87.5% | 100.0% | 62.5% | — |
+
+The 7B passes the 1.5B's final score before 20% of its epoch; the residual is
+4 semantic failures (wrong constant, `get_process_fps` without `Engine.`,
+api-miss, top-level fragment). Quantizing the merged tuned model
+(`quantize_k9.py`) ships it as **3.10 GB** (k9+embed99, 3.261 b/param) with the
+same 83.3% task score; paired ppl deltas vs tuned bf16 on the exp24 windows
+match the base model's exp24 rows (+0.117 code at k15 / +0.380 at k9), so
+fine-tuning changed neither the container sizes nor the quantization cost.
+
+    ./.venv-baselines/bin/python train_qlora.py \
+        --data out/godot4_sft.jsonl --model Qwen/Qwen2.5-Coder-7B-Instruct \
+        --out out/qlora_7b --epochs 1
+    ./.venv-baselines/bin/python merge_adapter.py \
+        --base Qwen/Qwen2.5-Coder-7B-Instruct --adapter out/qlora_7b/adapter \
+        --out out/merged_7b
+    ./.venv-rocm/bin/python quantize_k9.py --model out/merged_7b \
+        --out results/qwen7b_tuned_k15_embed99.k9 --k-body 15 --k-embed 99
+
+(`.venv-rocm` is the second-GPU env: torch 2.14.0+rocm7.2 with the same pinned
+deps — bnb NF4, training smoke, eval, and K9 load/generation all run on the
+RX 7900 XT; the CUDA card trains while the RDNA3 card evaluates.)
+
+### The 14B (overnight 2026-10-04 → 05 — see RESEARCH_LOG session 23)
+
+Same recipe at lr 1e-4 needed a **chunked cross-entropy** (`chunked_loss()` in
+`train_qlora.py`: vocab logits built per 256-position chunk inside a
+checkpoint — HF's full-vocab fp32 CE spike OOM'd even batch 1 on 20 GB;
+validated identical to HF's loss at batch 1 × seq 2048). Epoch: 234.8 min on
+the 7900 XT. Containers (merged dir → `quantize_k9.py`, CPU): k9+embed99
+5728 MB / k15+embed99 7004 MB / **k63+embed99 10480 MB at Δcode +0.005 — the
+ppl-free corner holds at 14B** (bf16 hosts: code 2.947 / wiki 7.524).
+
+The mechanical eval **regressed** (the ladder's first negative result): tuned
+14B greedy = 45.8% correct (parses 58.3%) vs the tuned 7B's 83.3% — while API
+precision is the best in the repo (draws-3 api 95.8%, no_godot3 100%) and val
+loss is the *lowest* (0.6171). Signature: short fragment replies re-learning
+the corpus's terse style at lr 1e-4. **Follow-up at lr 3e-5 (same night,
+212.9 min) recovered it: greedy 70.8% / draws-3 79.2% — now above the 7B's
+75.0% at the same draws-3 protocol.** Recipe rule: lr 1e-4 fits 1.5B and 7B;
+a 14B-body LoRA wants ~3e-5 — val loss at 1e-4 reached 0.6171 (lowest ever)
+while scoring worst, so **held-out corpus loss stopped predicting the
+mechanical score at 14B**.
+
+| run (grep tag in out/) | parses | api | no Godot 3 | correct | val loss |
+|---|---|---|---|---|---|
+| 14B base (NF4 host, draws-3) | 66.7% | 75.0% | 91.7% | 54.2% | 0.8510 |
+| 14B tuned lr1e-4 (greedy) | 58.3% | 87.5% | 100% | 45.8% | 0.6171 |
+| **14B tuned lr3e-5 (greedy)** | 79.2% | 91.7% | 100% | **70.8%** | 0.6309 |
+| **14B tuned lr3e-5 (draws-3)** | **87.5%** | 91.7% | 100% | **79.2%** | 0.6309 |
+
 Run it:
 
     python3 build_sft.py --workers 16 --out out/godot4_sft.jsonl

@@ -18,6 +18,7 @@ per-file split would leak).
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
 import json
 import math
@@ -32,11 +33,41 @@ os.environ.setdefault("HF_HOME", str(ROOT / ".hf-cache"))
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch                                                      # noqa: E402
+import torch.nn.functional as F                                   # noqa: E402
 from transformers import (AutoModelForCausalLM, AutoTokenizer,    # noqa: E402
                           BitsAndBytesConfig)
 
 TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj",
            "gate_proj", "up_proj", "down_proj"]
+
+
+def chunked_loss(model, input_ids, attention_mask, labels, chunk=256):
+    """The ordinary HF CE loss, but the vocab logits are built per position
+    chunk inside a checkpoint, so the fp32 upcast over a 152k vocab never
+    materializes full-size (a batch-8 x 2048 logits+CE spike is ~15 GB; this
+    path's transient is ~0.4 GB). Mathematically the same mean-over-masked
+    cross-entropy HF's ForCausalLMLoss computes; the chunked softmax is
+    recomputed in each chunk's backward (lm_head is ~7% of model FLOPs)."""
+    body = model.get_base_model().model          # Qwen2Model (LoRA-wrapped target
+    head = model.get_base_model().lm_head        # Linear modules live inside it)
+    hidden = body(input_ids=input_ids,
+                  attention_mask=attention_mask).last_hidden_state
+    shift = labels[:, 1:]
+    total = None
+    for c in range(0, input_ids.shape[1] - 1, chunk):
+        e = min(c + chunk, input_ids.shape[1] - 1)
+
+        def part(h, lab_chunk, w=None):          # w pins head for the closure
+            logits = w(h).float()
+            return F.cross_entropy(
+                logits.reshape(-1, logits.shape[-1]),
+                lab_chunk.reshape(-1), ignore_index=-100, reduction="sum")
+
+        s = torch.utils.checkpoint.checkpoint(part, hidden[:, c:e, :], shift[:, c:e],
+                                              head, use_reentrant=False)
+        total = s if total is None else total + s
+    n = int((shift != -100).sum())
+    return total / max(n, 1)
 
 
 def holdout(project: str, mod: int, bucket: int = 0) -> bool:
@@ -119,12 +150,29 @@ def main() -> int:
     ap.add_argument("--save-every", type=int, default=200)
     ap.add_argument("--log-every", type=int, default=20)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume", default="",
+                    help="adapter dir from an interrupted run to continue from")
+    ap.add_argument("--start-step", type=int, default=0,
+                    help="batch position already trained when interrupted "
+                         "(steps are batches here, batch=1; make it a multiple "
+                         "of grad-accum so accumulation stays aligned)")
+    ap.add_argument("--vram-cap", type=float, default=0.0,
+                    help="0<f<=1: torch.cuda memory-fraction cap, so a trainer "
+                         "sharing a card with the desktop can't evict kwin")
+    ap.add_argument("--shrink-frozen", action="store_true",
+                    help="recast peft's fp32 upcast of the frozen embed/lm_head "
+                         "back to bf16 (needed to fit 16 GB cards)")
+    ap.add_argument("--ce-chunk", type=int, default=256,
+                    help="token-chunk of the checkpointed CE; smaller halves "
+                         "the vocab-logits transients, loss value unchanged")
     ap.add_argument("--no-4bit", action="store_true",
                     help="bf16 LoRA instead of QLoRA (more VRAM, faster)")
     a = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(a.seed)
+    if a.vram_cap:
+        torch.cuda.set_per_process_memory_fraction(a.vram_cap)
 
     path = Path(a.data) if Path(a.data).is_absolute() else HERE / a.data
     rows, bad = [], 0
@@ -182,6 +230,15 @@ def main() -> int:
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     if qcfg is not None:
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+        if a.shrink_frozen:
+            # peft blanket-casts every frozen bf16 tensor up to fp32; on a 16 GB
+            # card that is +3.1 GB each for embed/lm_head and the run OOMs. Cast
+            # them back — they never train (LoRA targets the projections), and
+            # the frozen-quantized body was computed in bf16 anyway.
+            for getter in ("get_input_embeddings", "get_output_embeddings"):
+                mod = getattr(model, getter)()
+                if mod is not None and mod.weight.dtype == torch.float32:
+                    mod.weight.data = mod.weight.data.to(torch.bfloat16)
     lcfg = LoraConfig(r=a.lora_r, lora_alpha=a.lora_alpha,
                       lora_dropout=a.lora_dropout, bias="none",
                       task_type="CAUSAL_LM", target_modules=TARGETS)
@@ -190,9 +247,30 @@ def main() -> int:
     model.config.use_cache = False
 
     params = [p for p in model.parameters() if p.requires_grad]
-    # LoRA's B matrix is zero-initialised, so right now the wrapped model is
-    # numerically the base model — a free "before" number on held-out projects.
-    base_vl = evaluate(model, enc_val, a.batch, tok.pad_token_id, dev) if enc_val else None
+    base_vl = None
+    if a.resume:
+        from peft import set_peft_model_state_dict
+        from safetensors.torch import load_file
+        adir = Path(a.resume) if Path(a.resume).is_absolute() else HERE / a.resume
+        set_peft_model_state_dict(model, load_file(adir / "adapter_model.safetensors"))
+        # fresh LoRA starts with B=0, so nonzero B proves the load actually landed
+        n_b = sum(1 for n, _ in model.named_parameters() if "lora_B" in n)
+        live_b = sum(1 for n, p in model.named_parameters()
+                     if "lora_B" in n and float(p.abs().sum()) > 0)
+        print(f"resume: {adir} → {live_b}/{n_b} lora_B tensors alive", flush=True)
+        if live_b < 0.5 * n_b:
+            print("  adapter failed to load (lora_B still zero) — aborting")
+            return 1
+        # the load's transient copies sit in the allocator's cache; release
+        # them so the first batch's dequant spike has a clean card (the
+        # 2026-10-06 empty-card OOMs missed by <0.1 GB at this exact moment)
+        gc.collect()
+        torch.cuda.empty_cache()
+    else:
+        # LoRA's B matrix is zero-initialised, so right now the wrapped model is
+        # numerically the base model — a free "before" number on held-out projects.
+        base_vl = evaluate(model, enc_val, a.batch, tok.pad_token_id,
+                           dev) if enc_val else None
     if base_vl is not None:
         print(f"base val loss (held-out projects): {base_vl:.4f}", flush=True)
     opt = torch.optim.AdamW(params, lr=a.lr, betas=(0.9, 0.95), weight_decay=0.0)
@@ -212,15 +290,26 @@ def main() -> int:
     outdir.mkdir(parents=True, exist_ok=True)
     log = open(outdir / "train_log.jsonl", "w")
     hist, step, t0 = [], 0, time.time()
+    if a.start_step:
+        # the scheduler only advances on optimizer steps (one per grad-accum
+        # batches), so replay it — not the data — to the interruption point
+        for _ in range(a.start_step // a.grad_accum):
+            sched.step()
+        step = a.start_step
+        print(f"resumed at batch {step}: lr back to "
+              f"{sched.get_last_lr()[0]:.2e}", flush=True)
     stop = False
     for ep in range(math.ceil(a.epochs)):
-        for batch in batches(enc_train, a.batch, seed=a.seed + ep):
+        skip = a.start_step * a.batch if ep == 0 else 0
+        for bi, batch in enumerate(batches(enc_train, a.batch, seed=a.seed + ep)):
             if stop:
                 break
+            if bi < skip:
+                continue
             ids, lab, att = pad_batch(batch, tok.pad_token_id)
-            out = model(input_ids=ids.to(dev), attention_mask=att.to(dev),
-                        labels=lab.to(dev))
-            (out.loss / a.grad_accum).backward()
+            loss = chunked_loss(model, ids.to(dev), att.to(dev), lab.to(dev),
+                                chunk=a.ce_chunk)
+            (loss / a.grad_accum).backward()
             if (step + 1) % a.grad_accum == 0 or step + 1 >= total:
                 torch.nn.utils.clip_grad_norm_(params, 1.0)
                 opt.step()
@@ -228,7 +317,7 @@ def main() -> int:
                 opt.zero_grad(set_to_none=True)
             step += 1
             if step % a.log_every == 0 or step == 1 or step >= total:
-                rec = dict(step=step, total=total, loss=round(float(out.loss), 4),
+                rec = dict(step=step, total=total, loss=round(float(loss.detach()), 4),
                            lr=round(sched.get_last_lr()[0], 8),
                            sec=round(time.time() - t0, 1))
                 hist.append(rec)

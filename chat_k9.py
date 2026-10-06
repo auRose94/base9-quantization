@@ -8,6 +8,7 @@ two K9 variants needs no restore at all — only switching back to bf16 does.
 
     python3 chat_k9.py                     # 1.5B: bf16 baseline vs k63/embed99
     python3 chat_k9.py --preset 7b         # 7B: bf16, k9, k15, k9+GPTQ, k15+GPTQ
+    python3 chat_k9.py --preset 7b-tuned   # 7B Godot-4 tune: bf16, merged, k9, k15
     python3 chat_k9.py --preset 7b --no-serve    # same thing in the terminal
     python3 chat_k9.py --k9 results/x.k9 --base Qwen/...   # explicit
 
@@ -49,6 +50,16 @@ PRESETS = {
                   "k15 + embed99": "results/qwen7b_k15_embed99.k9",
                   "k9 + GPTQ": "results/qwen7b_gptq_k9_embed99.k9",
                   "k15 + GPTQ": "results/qwen7b_gptq_k15_embed99.k9"},
+    ),
+    "7b-tuned": dict(
+        base="Qwen/Qwen2.5-Coder-7B-Instruct",
+        variants={
+            "bf16 (unquantized)": None,
+            "tuned bf16 (merged)": "phase2/out/merged_7b",
+            "tuned k9 + embed99": "results/qwen7b_tuned_k9_embed99.k9",
+            "tuned k15 + embed99": "results/qwen7b_tuned_k15_embed99.k9",
+            "tuned k63 + embed99": "results/qwen7b_tuned_k63_embed99.k9",
+        },
     ),
 }
 DEFAULTS = dict(temperature=0.7, top_p=0.8, top_k=20, max_new_tokens=512)
@@ -558,8 +569,11 @@ def main() -> int:
     pre = PRESETS[a.preset]
     base = a.base or pre["base"]
     # An explicit --base means the preset's K9 files (which belong to a
-    # different base) must not be carried over.
-    variants = {"bf16 (unquantized)": None} if a.base else dict(pre["variants"])
+    # different base) must not be carried over. Preset paths are anchored to
+    # the repo root no matter which directory the server is launched from.
+    variants = {"bf16 (unquantized)": None} if a.base else {
+        n: None if p is None else str(HERE / p)
+        for n, p in pre["variants"].items()}
     for p in a.k9:
         name = Path(p).name.replace(".k9", "")
         variants[name] = str(Path(p) if Path(p).is_absolute() else HERE / p)

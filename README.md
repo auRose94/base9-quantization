@@ -1,15 +1,82 @@
 # base9-quantization
 
-**Ninths-grid / repeating-radix model quantization.** Origin idea by rose
+**Ninths-grid / repeating-radix model quantization.** Origin idea by Rosemary Mercury
 (2026-10-03, kept verbatim in `docs/00-idea-origin.md`): quantize a model so
 it "fits in the repeating numbers," using a base-9 digit system, as a
 model-compression mechanism. Developed and tested with ZCode. MIT licensed
-(`LICENSE` — replace the copyright name with your preferred legal name before
-publishing).
+(`LICENSE`).
 
-Status: **exploratory research; synthetic + real-model first passes done
-2026-10-03.** Synthetic Gaussian results establish the math and codec floor;
-real-model results below are on TinyStories-33M. Running log: `RESEARCH_LOG.md`.
+Status: **a measured format with a verified runtime.** The idea was first
+tested synthetically and on TinyStories-33M (2026-10-03); it now has real
+`.k9` containers, a llama.cpp fork that serves them natively (session 24 in
+the log), and a Phase-2 Godot-4 coder fine-tune built on top of the format
+(2026-10-04/05). Running log: `RESEARCH_LOG.md`.
+
+One-line pitch: a repeating-radix weight grid that lets entropy coding slide
+between the power-of-two quantizations to win quality-per-byte — proven
+end-to-end from the number theory to a bit-exact llama.cpp runtime, and
+applied to train a verified Godot-4 coder model.
+
+## Why it's useful
+
+Production quantization formats draw from a small menu of power-of-two
+alphabets: ternary (1.58 bits/param), 4-bit, 8-bit. The ninths family
+occupies the alphabet sizes *between* them (log2(9) ≈ 3.170 raw symbols,
+entropy-coded), and the measured outcome of this repo is that it buys real
+accuracy-per-byte there — against the deployed GGUF and bitsandbytes
+formats, on the same eval windows, with paired noise floors:
+
+- **Near-lossless tier.** At 1.5B, k63+embed99 is fp16-parity in ppl (13.90
+  vs 13.88) in a **1.12 GB** file — the same size class as q4_k_m, which
+  pays Δ +0.80 in the same harness (llama.cpp end-to-end, session 24). At
+  7B and 14B, the same tier reaches **q8_0-parity perplexity in files
+  roughly a third smaller** (7B: 5.47 vs 8.10 GB, Δ +0.021 ± 0.065; 14B:
+  10.49 vs 15.70 GB, Δ +0.018 ± 0.052).
+- **Small-file tier.** K9 points exist that are smaller *and* better than
+  GGUF q2_k, q4_0 and bitsandbytes NF4 — e.g. 768.8 MB at Δcode +0.145 vs
+  q4_k_m's 1117.3 MB at +0.170 (1.5B, session 12).
+- **It is a working format, not a proposal.** Real files round-trip
+  bit-exactly over 1.54B weights (0 digit mismatches); the entropy
+  accounting behind the tables matched the written file to +0.00%; a C
+  rANS coder runs at 278/210M symbols/s (46.8×/27.2× the Python
+  prototype); encode is parallel (2.2×, byte-identical output) and decode
+  streams tensor-by-tensor; and the llama.cpp fork decodes `.k9` on load —
+  measured 109 t/s at 1.5B k63 (RTX 5060 Ti, CUDA) and 35.6 t/s at 14B k63
+  (AMD 7900 XT, HIP).
+- **The negatives are logged with the same rigor as the wins.** Asymmetric
+  (GGUF-style) grids don't pay at matched bytes; GPTQ-style error
+  compensation is a small-model effect that vanishes by 7B; repeating-
+  decimal *notation* itself adds no compression; fitted codebooks and
+  compensation don't stack. Anyone testing non-power-of-two alphabets can
+  start from what already failed (sessions 7–8, 16, 20–21).
+
+Scope, stated plainly: the scaling claims are Qwen2.5-Coder at 1.5B/7B/14B,
+post-training quantization, on two consumer GPUs — a measured first pass
+with error bars, not a survey of model families.
+
+## Applications
+
+1. **Near-lossless local serving on consumer hardware.** q8_0-grade quality
+   in files roughly a third smaller moves 7B–14B models inside memory and
+   disks they didn't fit before; the fork's `llama-server` already serves
+   them on CUDA (RTX 50, sm_120) and HIP (RDNA3, gfx1100). Local, private,
+   offline inference at near-full precision is the plain use case.
+2. **Shipping fine-tuned models in the same container.** Phase 2
+   (`phase2/`) builds verified SFT corpora (every sample passes the real
+   Godot 4 parser) and trains a QLoRA coder judged by a mechanical,
+   parser-based eval: 12.5% base → 50.0% tuned at 1.5B, **83.3% at 7B**,
+   79.2% (draws-3) at 14B — and the tuned models re-quantize into K9
+   containers at essentially the base model's cost (tuned 7B: 3.10 GB at
+   the same task score).
+3. **A reference for quantization research on non-power-of-two alphabets.**
+   Every number in this README comes from a script in `experiments/`;
+   predictions were pre-registered in `docs/01-hypothesis.md` before the
+   experiments ran; null results are logged as verdicts. The reusable
+   pieces are the eval discipline (paired windows, noise floors, side-info
+   accounting) and the EC-SQ rate-distortion reasoning (exp15).
+4. **A public, rebuildable artifact.** The repo ships ~1 MB of source, docs
+   and text results; every multi-GB product is rebuildable from the table
+   in *What is not in this repository* below.
 
 ## The idea in one minute
 
@@ -318,6 +385,49 @@ Findings:
     survive to 7B on size. K9's byte-efficiency advantage holds at 7B; only its
     ability to beat q4_k_m on quality does not.
 
+27. **K9 runs inside llama.cpp** (session 24): a fork (branch `k9`, its commit
+    `14490cf2d` sitting directly on upstream `c25030496`) added a
+    decode-on-load GGUF container — a loader-only sentinel type
+    `GGML_TYPE_K9` = 43 plus one `k9.directory` KV carrying rank/shape/k/
+    group/scale metadata — and materializes K9 tensors on load into q8_0
+    layouts. That materialization is **lossless**: K9's dequant
+    `w = m·(d−H)/H` is a scaled integer, so Q8_0's per-32-block scale can be
+    set to `m/H` exactly — the only loss is the fp16 rounding of that scale
+    (≤ 4.9e-4 relative, finer than the k99 grid spacing). Gates are green:
+    digit streams bit-exact vs `k9.py`, 0-ulp scales, byte-exact
+    materialized q8_0 — verified on 1.5B k63, tuned 7B k15, and
+    GPTQ-act-order k15 (perm tensors take the F16 path in the loader). The
+    serving numbers in *Why it's useful* are `llama-server` on the exported
+    `.k9`-in-GGUF files; the verified ppl matrix:
+
+    | model | variant | file GB | ppl (wikitext-2 test) |
+    |---|---|---|---|
+    | 1.5B base | f16 | 3.09 | 13.88 ± 0.110 |
+    | 1.5B base | **K9 k63 + embed99** | **1.119** | **13.90 ± 0.110** |
+    | 1.5B base | q4_k_m | 1.117 | 14.70 ± 0.118 |
+    | 7B tuned | q8_0 | 8.10 | 9.231 ± 0.064 |
+    | 7B tuned | **K9 k63 + embed99** | **5.47** | **9.253 ± 0.065** |
+    | 14B tuned | q8_0 | 15.70 | 7.805 ± 0.052 |
+    | 14B tuned | **K9 k63 + embed99** | **10.49** | **7.823 ± 0.052** |
+
+    (1.5B rows compare our K9 file against upstream GGUF quants of the base
+    model; the 7B/14B rows are tuned merges quantized with `llama-quantize`,
+    so both members of each comparison came through the same pipeline.)
+    Stage 2 is planned: resident container types (K9_4/6/7) with fused MMVQ
+    matmul kernels, then a PR — the upstreamable artifact is the container
+    type, not the rANS storage layer.
+
+28. **The format earned its first real user** (sessions 22–23, `phase2/`):
+    the verified-corpus Godot-4 coder fine-tune ladder — 12.5% base →
+    50.0% tuned at 1.5B → **83.3% tuned at 7B** → 79.2% draws-3 at 14B
+    (which needed a chunked-CE fix to train at all and an lr recipe change
+    to 3e-5) — every score judged by the real Godot 4 parser, never by eye.
+    The tuned models re-quantize into K9 at essentially the base model's
+    cost (tuned 7B k9+embed99 = **3.10 GB**, task score unchanged), so the
+    fine-tuned, verified coder ships in the same container the research
+    produces. An execution-verified C++ corpus/eval extension (build, run,
+    stdout judging) is the current front line.
+
 ## Requirements (what applying this research needs)
 
 - **Hardware:** this experiment ran on one RTX 5060 Ti (~2 min/eval sweep);
@@ -346,9 +456,12 @@ Findings:
     docs/04-k9-codec-spec.md        the K9 codec container spec (RQ5)
     experiments/                    self-asserted experiment scripts (see its README)
     results/                        generated CSV + MD outputs of every experiment
-    phase2/                         GDScript/Godot corpus + headless verifier (see its README)
+    phase2/                         GDScript/Godot corpus + verifier + coder fine-tunes (see its README)
     chat_k9.py                      local chat UI for the K9-quantized models (bf16 A/B)
     RESEARCH_LOG.md                 dated log: predictions, verdicts, surprises
+
+The serving runtime is a separate fork: llama.cpp, branch `k9` (one commit
+over upstream `c25030496`); findings 27–28 above summarize it.
 
 ## Running
 

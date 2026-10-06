@@ -6,6 +6,76 @@ honest.
 
 ---
 
+## 2026-10-06, session 25 — C++ corpus extension, the GD+C++ 14B mix, and the ops/split lessons
+
+**C++ extension of the Godot-4 coder phase.** A g++-based verifier
+(`phase2/cpp_verify.py`, selftest 7/7) with phase 2's three-way verdict
+carried over: ok / parse_error / **context** (unresolved #include kept-but-
+unverified), plus an execution mode (real build + run + stdout capture;
+tasks judged this way are execution-verified). Engine-source probe: 74% of
+Godot's non-thirdparty .cpp parses in place once (a) the include path pins
+the repo root + platform/linuxbsd, and (b) the ~180 build-time `.gen` headers
+are materialized (a 4-min `scons platform=linuxbsd target=editor` run —
+generation, not git history, is what produced them).
+
+**Corpus: the-stack-v1 → full scan.** Content lives in v1 parquets; the-stack-
+v2 is index+blobs needing its own grant (see the acceptance lessons in
+phase2/README). 214-shard × sample-rate-0.08 scan → 83.5k candidates →
+18-thread g++ fan-out → **75,368 unique verified files** (12.7% of candidates
+pass `-fsyntax-only`; license-filtered quality windows keep only what a
+2048-token window can teach). Result mixed with the GDScript corpus:
+**63,565 verified GDScript + 45,000 C++ = 108,565 rows** (seed-0 shuffle,
+GDScript-dominant on purpose).
+
+**The 14B mix run — interim scoreboard.** Qwen2.5-Coder-14B NF4 QLoRA, lr
+3e-5, 1 epoch = 6,668 optimizer steps. Mid-run adapter (~step 4200, NF4 host,
+draws-3): **GDScript 83.3% (20/24 — parity with the tuned 7B, above the
+gd-only 14B's 79.2% — the C++ share did not cost Godot skill)**, C++ **43.8-50%
+(7-8/16; parses 87.5%, builds 87.5%, output 56.2%, no-bad-isms 100%)** —
++17-21 pts over the 1.5B smoke; profile = compiles-but-semantics-lag, the
+expected opening curve.
+
+**The memory mystery that forced a restart.** bitsandbytes 0.50.2 (newest on
+this machine's index) ships **no fused NF4 kernels for sm_120 (5060 Ti) or
+gfx1100 (7900 XT)**: every 4-bit linear takes `_dequant_linear_fallback`
+(materializes the dequantized weight), and the first forward's live set lands
+at **18.6-19.4 GiB**. The from-scratch config survived 4,100 batches on a
+20 GB card at exactly that edge. The **resume path carried a stubborn ~+0.6
+GiB surplus** no flag moved: 13 OOM launches on a completely clean card, each
+at a different op (the fp32 embed upcast, the 136 MiB gate/up dequant, an SDPA
+buffer). Decision: restart from step 0 — same corpus, same seed, same shuffle,
+so the redone segment is a replay of the same trajectory; the step-4200
+adapter is preserved (out/qlora_14b_mix/adapter_resume3600 + an earlier
+backup) and its interim scores stand as results. train_qlora.py gains:
+`--resume/--start-step` (adapter-continue; OneCycleLR replay spans
+start-step // grad-accum steps because the schedule advances per *optimizer*
+step), `--ce-chunk` (token-chunk of the checkpointed CE — loss value is
+chunk-invariant, transients scale with it), `--vram-cap` (memory-fraction cap
+for shared cards), `--shrink-frozen` (recast peft's blanket fp32 upcast of the
+frozen embed/lm_head back to bf16 — measured ≈0 here because the spike is
+dequant-hold-dominated, kept for 16 GB cards).
+
+**Ops: the hardware split and crash-proof long jobs.** New machine layout:
+the Ryzen 9 9900X's BIOS-disabled RDNA2 iGPU enabled (4 GiB carve) now
+composites KDE, the 7900 XT is compute-only (its full 21.5 GB serves the run),
+and the 5060 Ti hosts the chat server. Process lessons from the 18:49 cascade
+(62 GB RAM + 39 GB swap → systemd-oomd killed the whole agent app-cgroup):
+**setsid detaches the session, not the cgroup — long jobs must run under
+`systemd-run --user` units with linger;** CPU merge/quantize passes (~30 GB
+host each) must never stack with a model load; a 30-s stray-fence
+(`mix_gpu_guard.sh`, cgroup-aware) blocks uncoordinated relaunches from other
+sessions. The canonical pipeline is `phase2/mix_pipeline_unit.sh` (waits for
+the compute-free-card gate, then train → evals → merge → K9 k9/15/63 → CPU
+ppl, strictly serialized). Superseded and removed: `run_mix_e2e.sh`,
+`post_train_ops.sh` (the two scripts that codified the disproven "harness
+reaping" theory).
+
+**Open items.** Fused 4-bit dequant kernels (a bitsandbytes source build or a
+torchao backend) = the real memory+speed lever, scoped for a focused session;
+profile the resume-path's +0.6 GiB surplus before the next mid-run resume.
+
+---
+
 ## 2026-10-05, session 24 — K9 runs in llama.cpp: `.k9`-in-GGUF, decode-on-load, exact Q8_0 materialization, both GPUs
 
 **What this is.** K9's "missing runtime piece" — a serving stack. Fork of upstream
@@ -175,7 +245,7 @@ Qwen2.5-Coder-7B-Instruct, on the same 63,565-sample verified corpus, the same
 24-task mechanical eval, r=16 LoRA on every projection, 1 epoch, lr 1e-4 OneCycle —
 the full recipe unchanged.
 
-**A second GPU entered service this session.** rose asked whether the RX 7900 XT
+**A second GPU entered service this session.** Rosemary asked whether the RX 7900 XT
 (20 GB, RDNA3, ROCm 7.2.4 stack already installed) helps and whether both cards
 can be used. Answers established by measurement (`.venv-rocm`: torch 2.14.0+rocm7.2
 + bitsandbytes 0.50.2 + peft — all pinned to the versions `.venv-baselines` uses):
@@ -1440,7 +1510,7 @@ RQ4 structure scan (is the real model's digit stream autocorrelated?);
 
 ## 2026-10-03 — project created, first experiments run
 
-**Setup.** Idea from rose (`docs/00-idea-origin.md`), formalized into three
+**Setup.** Idea from Rosemary Mercury (`docs/00-idea-origin.md`), formalized into three
 claims (`docs/01-hypothesis.md` §1). Predictions P1–P5 pre-registered in
 `docs/01 §5` before any experiment ran. Environment: Python 3.14.7, numpy
 2.5.3, n = 200,000 Gaussian weights (seed 42). Literature verification pass

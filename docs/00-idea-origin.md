@@ -1,7 +1,7 @@
 # 00 — Where the idea came from
 
 **Date:** 2026-10-03 (session start)
-**Author:** rose
+**Author:** Rosemary Mercury
 **License intent:** MIT — this whole folder is meant to be publishable as-is.
 
 ## Original idea, verbatim
