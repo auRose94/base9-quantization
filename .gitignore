@@ -39,6 +39,8 @@ phase2/out/
 
 # big llama.cpp fork artifacts (session 24)
 results/*.gguf
+# exp27 KL-divergence workspace: ~38 GB base-logit file + per-pass logs
+results/kld/
 
 # agent-session state and second venv; regenerable ppl-corpus dumps
 .zcode/
