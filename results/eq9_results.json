@@ -1,0 +1,53 @@
+[
+  {
+    "prediction": "P16",
+    "control": 1.2962031364440918,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P17",
+    "gap_k27": 0.0181,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P18",
+    "gap_k9": 0.1625,
+    "beats_scalefit": true,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P19",
+    "identity": [
+      0.0,
+      1e-05,
+      5e-05
+    ],
+    "verdict": "PASS"
+  },
+  {
+    "anchor": 1.9725621938705444,
+    "arms": [
+      {
+        "arm": "CONTROL_fp32",
+        "bytes": 1440,
+        "trained_loss": 1.2962031364440918,
+        "artifact_loss": 1.2962031364440918,
+        "story": "there was a little girl called Jane. Jane loved to eat spots. One day, while her mom was walking in the garden, a big gi"
+      },
+      {
+        "arm": "QAT_k27emb99",
+        "bytes": 165315,
+        "trained_loss": 1.314313292503357,
+        "artifact_loss": 1.3143247365951538,
+        "story": "there was a little girl named Papa who loved to play games with her friends. One day, Paul made a loud noise floating.\nL"
+      },
+      {
+        "arm": "QAT_k9emb99",
+        "bytes": 116883,
+        "trained_loss": 1.4587005376815796,
+        "artifact_loss": 1.4587520360946655,
+        "story": "there was a little girl named Lily. She loved peppers and Anna. One day, she went to her park to the park with her mommy"
+      }
+    ]
+  }
+]

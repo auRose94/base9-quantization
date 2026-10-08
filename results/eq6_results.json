@@ -1,0 +1,54 @@
+[
+  {
+    "prediction": "P9",
+    "results": [
+      {
+        "variant": "A_k9emb99",
+        "recovery": 1.1053676025609842
+      },
+      {
+        "variant": "B_k27emb99",
+        "recovery": 8.139676069396995
+      },
+      {
+        "variant": "C_k63emb99",
+        "recovery": 26.00101791417082
+      }
+    ],
+    "verdict": "PASS"
+  },
+  {
+    "results": [
+      {
+        "variant": "A_k9emb99",
+        "bytes": 116362,
+        "pre_loss": 3.0924196243286133,
+        "post_loss": 1.8545655012130737,
+        "post_loss_artifact": 1.8545955419540405,
+        "gap_recovery": 1.1053676025609842,
+        "target_half": 2.532490909099579,
+        "story": "there was a red. He liked to play outside and look what alone. One day, the shop"
+      },
+      {
+        "variant": "B_k27emb99",
+        "bytes": 165541,
+        "pre_loss": 2.043919086456299,
+        "post_loss": 1.463097095489502,
+        "post_loss_artifact": 1.4630961418151855,
+        "gap_recovery": 8.139676069396995,
+        "target_half": 2.0082406401634216,
+        "story": "there was a little girl named Amy. Amy went for a relaxe. She had a family in th"
+      },
+      {
+        "variant": "C_k63emb99",
+        "bytes": 203489,
+        "pre_loss": 1.9938764572143555,
+        "post_loss": 1.4396839141845703,
+        "post_loss_artifact": 1.4396872520446777,
+        "gap_recovery": 26.00101791417082,
+        "target_half": 1.98321932554245,
+        "story": "there was a little girl named Amy. Emma had a large brother who loved to dance e"
+      }
+    ]
+  }
+]

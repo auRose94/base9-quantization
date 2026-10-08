@@ -1,0 +1,48 @@
+[
+  {
+    "prediction": "P31",
+    "gap_4000": 0.3884,
+    "gap_8000": 0.6544,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P32",
+    "gap_lr2e4": 0.3127,
+    "gap_lr1e4_ref": 0.241,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P33",
+    "MB": [
+      43.26,
+      43.3,
+      43.17
+    ],
+    "in_class": [
+      43,
+      45
+    ],
+    "verdict": "PASS"
+  },
+  {
+    "ctrl": 1.2817,
+    "ref_cold": 1.5227,
+    "runs": [
+      {
+        "arm": "s4000_lr1e4",
+        "loss": 1.6701,
+        "artifact_MB": 43.26
+      },
+      {
+        "arm": "s8000_lr1e4",
+        "loss": 1.9361,
+        "artifact_MB": 43.3
+      },
+      {
+        "arm": "s2000_lr2e4",
+        "loss": 1.5944,
+        "artifact_MB": 43.17
+      }
+    ]
+  }
+]

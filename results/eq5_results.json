@@ -1,0 +1,58 @@
+[
+  {
+    "prediction": "P6",
+    "bytes": 116362,
+    "loss": 3.0925,
+    "ratio": 1.5678,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P7",
+    "raw_bytes": 246934,
+    "dct_bytes": 247073,
+    "byte_ratio": 1.0006,
+    "loss_raw": 1.9705123901367188,
+    "loss_dct": 1.9777522087097168,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P8",
+    "max_window_nll_diff": 0.00066,
+    "tol": 0.005,
+    "verdict": "PASS"
+  },
+  {
+    "rows": [
+      {
+        "variant": "A_k9emb99",
+        "bytes": 116362,
+        "bpp": 3.58,
+        "loss": 3.0925,
+        "sem": 0.0247,
+        "loss_mem": 3.0924,
+        "ratio": 1.5678,
+        "story": "there was an auty candle. Annusione appear andlplied to belf. She drewed them an"
+      },
+      {
+        "variant": "B_k27emb99",
+        "bytes": 165541,
+        "bpp": 5.093,
+        "loss": 2.0439,
+        "sem": 0.0167,
+        "loss_mem": 2.0439,
+        "ratio": 1.0362,
+        "story": "there was a little girl named Lily. She loved to play with her toys outside in t"
+      },
+      {
+        "variant": "C_k63emb99",
+        "bytes": 203489,
+        "bpp": 6.26,
+        "loss": 1.9939,
+        "sem": 0.0164,
+        "loss_mem": 1.9939,
+        "ratio": 1.0108,
+        "story": "there was a little girl named Lily. She loved to play with her toys and go to th"
+      }
+    ]
+  }
+]

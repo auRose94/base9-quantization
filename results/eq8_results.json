@@ -1,0 +1,51 @@
+[
+  {
+    "prediction": "P11",
+    "bpp": 8.417,
+    "ratio": 0.7215,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P12",
+    "losses": {
+      "k63": 1.4397,
+      "k255": 1.4233,
+      "k1023": 1.425
+    },
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P13",
+    "d_hi_to_lo": 0.0017,
+    "step_lo": 0.0164,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P14",
+    "body_plane_bpp": 10.435,
+    "bound": 10.4,
+    "verdict": "FAIL"
+  },
+  {
+    "rows": [
+      {
+        "variant": "k255+emb99",
+        "bytes": 273594,
+        "bpp": 8.417,
+        "pre": 1.973,
+        "post": 1.4233,
+        "ratio_post": 0.7215
+      },
+      {
+        "variant": "k1023(2x5bit)+emb99",
+        "bytes": 329400,
+        "bpp": 10.134,
+        "pre": 1.9751,
+        "post": 1.425,
+        "ratio_post": 0.7224
+      }
+    ],
+    "story_k255": "there was a little girl named Lily. She loved to play with her toys in the park. One day, she went out to play hide and seek. The small bird was sad and had an ",
+    "story_k1023": "there was a little girl named Amy. Amy went for a walk in the park. She loved to exch with her friends. One day, Amy found a boy's toy coat. She loved to run an"
+  }
+]

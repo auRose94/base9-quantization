@@ -1,0 +1,47 @@
+[
+  {
+    "prediction": "P27",
+    "gap_e99": 0.241,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P28",
+    "gaps": {
+      "e99": 0.241,
+      "e63": 0.3666,
+      "e27": 0.4873
+    },
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P29",
+    "artifact_MB": 33.84,
+    "gap_e27": 0.4873,
+    "verdict": "FAIL"
+  },
+  {
+    "anchor": 1.355,
+    "runs": [
+      {
+        "arm": "CONTROL_fp32",
+        "loss": 1.2817,
+        "artifact_MB": 0.1
+      },
+      {
+        "arm": "recipe_k9_e99",
+        "loss": 1.5227,
+        "artifact_MB": 43.24
+      },
+      {
+        "arm": "k9_e63",
+        "loss": 1.6483,
+        "artifact_MB": 40.02
+      },
+      {
+        "arm": "k9_e27",
+        "loss": 1.769,
+        "artifact_MB": 33.84
+      }
+    ]
+  }
+]

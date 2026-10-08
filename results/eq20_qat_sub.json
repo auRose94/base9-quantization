@@ -1,0 +1,27 @@
+[
+  {
+    "prediction": "P39d",
+    "loss": 2.0648953914642334,
+    "arm": 1.3143247365951538,
+    "ctrl": 1.2962031364440918,
+    "bar": "\u2264 ARM\u00b71.02",
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "eq20-artifact-identity",
+    "delta": 0.00038,
+    "bar": 0.005,
+    "verdict": "PASS"
+  },
+  {
+    "arms": [
+      {
+        "arm": "qat_sub_k27",
+        "bytes": 166381,
+        "trained_loss": 2.0648953914642334,
+        "artifact_loss": 2.064516544342041,
+        "identity": 0.0003788471221923828
+      }
+    ]
+  }
+]

@@ -1,0 +1,58 @@
+[
+  {
+    "prediction": "P20",
+    "control_mean": 1.2939,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P21",
+    "gap_42": 0.0211,
+    "gap_43": 0.021,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P22",
+    "gap_k9": 0.1741,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P23",
+    "seed_delta": 0.0001,
+    "verdict": "PASS"
+  },
+  {
+    "anchor": 1.9725621938705444,
+    "runs": [
+      {
+        "arm": "q4000s42_CONTROL",
+        "bytes": 1440,
+        "loss": 1.294,
+        "artifact_loss": 1.294
+      },
+      {
+        "arm": "q4000s43_CONTROL",
+        "bytes": 1440,
+        "loss": 1.2937,
+        "artifact_loss": 1.2937
+      },
+      {
+        "arm": "q4000s42_qatk27",
+        "bytes": 165338,
+        "loss": 1.3151,
+        "artifact_loss": 1.3151
+      },
+      {
+        "arm": "q4000s43_qatk27",
+        "bytes": 165326,
+        "loss": 1.3147,
+        "artifact_loss": 1.3147
+      },
+      {
+        "arm": "q4000s42_qatk9",
+        "bytes": 117048,
+        "loss": 1.4682,
+        "artifact_loss": 1.4682
+      }
+    ]
+  }
+]

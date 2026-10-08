@@ -1,0 +1,130 @@
+{
+  "seg": 1024,
+  "K_sweep": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "R": 4096,
+  "streams": {
+    "activation_site0": {
+      "n": 262144,
+      "alpha": 130,
+      "lams": [
+        0.95,
+        0.95
+      ],
+      "rows": [
+        {
+          "K": 1,
+          "bytes": 178701.5,
+          "M_sym_s": 90.3,
+          "roundtrip": true
+        },
+        {
+          "K": 2,
+          "bytes": 176752.4,
+          "M_sym_s": 90.8,
+          "roundtrip": true
+        },
+        {
+          "K": 4,
+          "bytes": 173943.5,
+          "M_sym_s": 88.3,
+          "roundtrip": true
+        },
+        {
+          "K": 8,
+          "bytes": 168102.5,
+          "M_sym_s": 83.5,
+          "roundtrip": true
+        },
+        {
+          "K": 16,
+          "bytes": 156279.5,
+          "M_sym_s": 75.1,
+          "roundtrip": true
+        }
+      ],
+      "byte_M_sym_s": 242.1,
+      "base9_M_sym_s": 162.5,
+      "p47_ratios": {
+        "1": 0.373,
+        "2": 0.375,
+        "4": 0.365,
+        "8": 0.345,
+        "16": 0.31
+      },
+      "p47_best_ratio": 0.375,
+      "p47_best_K": 2,
+      "bytes_at_best_K": 176752.4,
+      "static_bytes": null
+    },
+    "embed_weight": {
+      "n": 32768,
+      "alpha": 99,
+      "lams": [
+        0.05,
+        0.0
+      ],
+      "rows": [
+        {
+          "K": 1,
+          "bytes": 26092.3,
+          "M_sym_s": 105.3,
+          "roundtrip": true
+        },
+        {
+          "K": 2,
+          "bytes": 26068.1,
+          "M_sym_s": 103.6,
+          "roundtrip": true
+        },
+        {
+          "K": 4,
+          "bytes": 26087.9,
+          "M_sym_s": 100.6,
+          "roundtrip": true
+        },
+        {
+          "K": 8,
+          "bytes": 26098.6,
+          "M_sym_s": 95.8,
+          "roundtrip": true
+        },
+        {
+          "K": 16,
+          "bytes": 26096.6,
+          "M_sym_s": 87.0,
+          "roundtrip": true
+        }
+      ],
+      "byte_M_sym_s": 229.0,
+      "base9_M_sym_s": 187.0,
+      "p47_ratios": {
+        "1": 0.46,
+        "2": 0.452,
+        "4": 0.439,
+        "8": 0.418,
+        "16": 0.38
+      },
+      "p47_best_ratio": 0.46,
+      "p47_best_K": 1,
+      "bytes_at_best_K": 26092.3,
+      "static_bytes": null
+    }
+  },
+  "P47": {
+    "prediction": "P47",
+    "bar": 0.5,
+    "best_ratio_by_stream": {
+      "activation_site0": 0.375,
+      "embed_weight": 0.46
+    },
+    "best_ratio": 0.46,
+    "verdict": "FAIL",
+    "note": "eq31's engine: contexts clustered into K L1-resident tables (ctx -> cluster, deterministic from the prefix counts, refreshed at R=4096); K is swept and the rate at the best K is reported alongside the throughput."
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "P37": {
+    "prediction": "P37",
+    "worst_num_digits": 790.9,
+    "worst_den_digits": 784.9,
+    "bar": 20,
+    "u128_digits": 40.4,
+    "widened_at": [
+      "layers.0.wq",
+      "layers.0.wk",
+      "layers.0.w1",
+      "layers.0.w3"
+    ],
+    "verdict": "FAIL",
+    "note": "pure-exact track vs the \u226420-digit registered bar; the regrid-per-layer design (registered fallback; census 11.2\u201314.2 digits) is the compliant bounded-state form. Exactness-vs-bounded-state = the recorded finding."
+  },
+  "P38": {
+    "prediction": "P38",
+    "order_identity": true,
+    "width_tracks_identical": true,
+    "widen_events_identical": true,
+    "max_logit_delta_vs_fp32ref": 38.02371597290039,
+    "device_axis": "cpu only (int64 GPU kernels deferred)",
+    "verdict": "PASS"
+  },
+  "widths": {
+    "embed": {
+      "num_digits": 5.4,
+      "den_digits": 1.9
+    },
+    "L0.attnorm": {
+      "num_digits": 12.9,
+      "den_digits": 3.5
+    },
+    "L0.qkv": {
+      "num_digits": 18.9,
+      "den_digits": 11.0
+    },
+    "L0.res_mid": {
+      "num_digits": 17.4,
+      "den_digits": 3.2
+    },
+    "L0.norm": {
+      "num_digits": 17.7,
+      "den_digits": 16.7
+    },
+    "L0.w1w3": {
+      "num_digits": 23.7,
+      "den_digits": 24.3
+    },
+    "L0.res_out": {
+      "num_digits": 47.6,
+      "den_digits": 21.1
+    },
+    "L1.attnorm": {
+      "num_digits": 58.4,
+      "den_digits": 48.6
+    },
+    "L1.qkv": {
+      "num_digits": 64.0,
+      "den_digits": 55.8
+    },
+    "L1.res_mid": {
+      "num_digits": 47.6,
+      "den_digits": 21.1
+    },
+    "L1.norm": {
+      "num_digits": 58.0,
+      "den_digits": 48.6
+    },
+    "L1.w1w3": {
+      "num_digits": 63.4,
+      "den_digits": 56.2
+    },
+    "L1.res_out": {
+      "num_digits": 96.2,
+      "den_digits": 69.4
+    },
+    "L2.attnorm": {
+      "num_digits": 106.9,
+      "den_digits": 97.5
+    },
+    "L2.qkv": {
+      "num_digits": 113.3,
+      "den_digits": 104.7
+    },
+    "L2.res_mid": {
+      "num_digits": 96.2,
+      "den_digits": 69.4
+    },
+    "L2.norm": {
+      "num_digits": 106.3,
+      "den_digits": 97.2
+    },
+    "L2.w1w3": {
+      "num_digits": 111.7,
+      "den_digits": 104.7
+    },
+    "L2.res_out": {
+      "num_digits": 193.1,
+      "den_digits": 166.2
+    },
+    "L3.attnorm": {
+      "num_digits": 203.2,
+      "den_digits": 194.3
+    },
+    "L3.qkv": {
+      "num_digits": 209.5,
+      "den_digits": 201.9
+    },
+    "L3.res_mid": {
+      "num_digits": 193.1,
+      "den_digits": 166.2
+    },
+    "L3.norm": {
+      "num_digits": 203.5,
+      "den_digits": 194.3
+    },
+    "L3.w1w3": {
+      "num_digits": 208.8,
+      "den_digits": 201.9
+    },
+    "L3.res_out": {
+      "num_digits": 387.7,
+      "den_digits": 359.6
+    },
+    "L4.attnorm": {
+      "num_digits": 397.8,
+      "den_digits": 388.7
+    },
+    "L4.qkv": {
+      "num_digits": 403.8,
+      "den_digits": 396.2
+    },
+    "L4.res_mid": {
+      "num_digits": 387.7,
+      "den_digits": 359.6
+    },
+    "L4.norm": {
+      "num_digits": 397.8,
+      "den_digits": 388.7
+    },
+    "L4.w1w3": {
+      "num_digits": 403.2,
+      "den_digits": 396.2
+    },
+    "L4.res_out": {
+      "num_digits": 775.4,
+      "den_digits": 748.0
+    },
+    "logits": {
+      "num_digits": 790.9,
+      "den_digits": 784.9
+    }
+  },
+  "saturation": {
+    "natural": {
+      "widen_events": [
+        "layers.0.wq",
+        "layers.0.wk",
+        "layers.0.w1",
+        "layers.0.w3"
+      ]
+    },
+    "split_rev": {
+      "widen_events": [
+        "layers.0.wq",
+        "layers.0.wk",
+        "layers.0.w1",
+        "layers.0.w3"
+      ]
+    }
+  },
+  "lams10": [
+    0.8135,
+    0.7949,
+    0.7705,
+    0.7725,
+    0.7607,
+    0.7637,
+    0.7559,
+    0.7607,
+    0.7549,
+    0.7627,
+    0.75
+  ],
+  "rest_bits": "fp32-exact",
+  "note": "EQ17_REST_BITS set -> rests are uniform-power grid roundings (defined rounding of the 1-D constants); unset -> bit-exact fp32 rests (aligned per column)"
+}

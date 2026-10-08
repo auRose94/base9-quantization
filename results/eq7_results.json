@@ -1,0 +1,14 @@
+{
+  "fitted_artifact": 202081,
+  "rest_fp16_bytes": 1408,
+  "total_variables_bytes": 203489,
+  "bytes_materialized_on_gpu": 585600,
+  "synth_s": 0.2861,
+  "fp32_upload_bytes": 1040128,
+  "fp32_upload_s": 0.0007,
+  "maxabs_fp32_vs_container": 1.1920928955078125e-07,
+  "maxabs_fp16_vs_container": 0.0004725456237792969,
+  "eval_loss": 1.4397,
+  "sem": 0.0094,
+  "story": "there was a little girl named Amy. Emma had a large brother who loved to dance every day. She wo"
+}

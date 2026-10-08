@@ -1,0 +1,192 @@
+{
+  "widths_digits": {
+    "embed": {
+      "num_digits": 5.4,
+      "den_digits": 5.7
+    }
+  },
+  "bounded": {
+    "worst_num": 5.4,
+    "worst_den": 5.7,
+    "u128_digits": 40.4,
+    "bounded": true
+  },
+  "sites": [
+    {
+      "site": "embed",
+      "delta": 2.9194111683672475e-08,
+      "scale": 1.3115234375,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L0.attnorm",
+      "delta": 1.3623918810878877e-06,
+      "scale": 14.92218017578125,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L0.scores",
+      "delta": 0.0002593994140625,
+      "scale": 1.7e+308,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L0.res_mid",
+      "delta": 1.1745796781703621e-05,
+      "scale": 3.2317826747894287,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L0.ffnorm",
+      "delta": 2.3925495179766276e-05,
+      "scale": 5.62286901473999,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L0.res_out",
+      "delta": 8.673159066141523e-05,
+      "scale": 25.328022003173828,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L1.attnorm",
+      "delta": 0.0001472900572512259,
+      "scale": 15.302220344543457,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L1.scores",
+      "delta": 0.00177001953125,
+      "scale": 1.7e+308,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L1.res_mid",
+      "delta": 0.00012448356882233114,
+      "scale": 26.04194450378418,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L1.ffnorm",
+      "delta": 7.387486608534388e-05,
+      "scale": 7.375000953674316,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L1.res_out",
+      "delta": 0.0001635292578474612,
+      "scale": 25.856399536132812,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L2.attnorm",
+      "delta": 0.00016078358797622094,
+      "scale": 21.046037673950195,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L2.scores",
+      "delta": 0.002197265625,
+      "scale": 1.7e+308,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L2.res_mid",
+      "delta": 0.0001823737301681061,
+      "scale": 25.921066284179688,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L2.ffnorm",
+      "delta": 0.00012323393607982513,
+      "scale": 6.75893497467041,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L2.res_out",
+      "delta": 0.00020814755453701927,
+      "scale": 26.213232040405273,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L3.attnorm",
+      "delta": 0.00024954996601334045,
+      "scale": 12.145347595214844,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L3.scores",
+      "delta": 0.002925872802734375,
+      "scale": 1.7e+308,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L3.res_mid",
+      "delta": 0.00023399478817687225,
+      "scale": 26.728986740112305,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L3.ffnorm",
+      "delta": 0.00014324242330797377,
+      "scale": 7.041508674621582,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L3.res_out",
+      "delta": 0.00029646025074864246,
+      "scale": 27.73712921142578,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L4.attnorm",
+      "delta": 0.0003335177820922297,
+      "scale": 11.239180564880371,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L4.scores",
+      "delta": 0.00249481201171875,
+      "scale": 1.7e+308,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L4.res_mid",
+      "delta": 0.0004059507402889295,
+      "scale": 27.922243118286133,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L4.ffnorm",
+      "delta": 0.0003489535824290346,
+      "scale": 8.706625938415527,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "L4.res_out",
+      "delta": 0.0012013529305541226,
+      "scale": 39.103519439697266,
+      "flips_gt_0p05": 0
+    },
+    {
+      "site": "logits",
+      "delta": 0.0018258094787597656,
+      "scale": 67.96663665771484,
+      "flips_gt_0p05": 0
+    }
+  ],
+  "order_identical": true,
+  "wide_events": [
+    "layers.0.attention.wo.weight",
+    "layers.1.attention.wo.weight",
+    "layers.2.attention.wo.weight",
+    "layers.3.attention.wo.weight",
+    "layers.4.attention.wo.weight",
+    "layers.0.attention.wo.weight",
+    "layers.1.attention.wo.weight",
+    "layers.2.attention.wo.weight",
+    "layers.3.attention.wo.weight",
+    "layers.4.attention.wo.weight"
+  ],
+  "wall_s": 29.2
+}

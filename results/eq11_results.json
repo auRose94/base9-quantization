@@ -1,0 +1,34 @@
+[
+  {
+    "prediction": "P24",
+    "control": 1.2817,
+    "anchor": 1.355,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P25",
+    "gap_nats": 0.1535,
+    "verdict": "PASS"
+  },
+  {
+    "prediction": "P26",
+    "artifact_MB": 43.3,
+    "bound_MB": 25,
+    "body_MB": 43.2,
+    "rest_fp16_MB": 0.06,
+    "verdict": "FAIL"
+  },
+  {
+    "anchor": 1.355,
+    "results": [
+      {
+        "arm": "CONTROL_fp32",
+        "loss": 1.2817
+      },
+      {
+        "arm": "QAT_recipe",
+        "loss": 1.4352
+      }
+    ]
+  }
+]

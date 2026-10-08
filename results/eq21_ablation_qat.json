@@ -1,0 +1,29 @@
+[
+  1.3143247365951538,
+  1.2962031364440918,
+  {
+    "arms": [
+      {
+        "arm": "normQAT_k27",
+        "loss": 2.2885,
+        "vs_eq9arm_pct": 74.12,
+        "artifact": 2.2819,
+        "verdict": "FAIL"
+      },
+      {
+        "arm": "attQAT_k27",
+        "loss": 1.3509,
+        "vs_eq9arm_pct": 2.78,
+        "artifact": 1.3511,
+        "verdict": "FAIL"
+      },
+      {
+        "arm": "siluQAT_k27",
+        "loss": 1.3168,
+        "vs_eq9arm_pct": 0.19,
+        "artifact": 1.3171,
+        "verdict": "PASS"
+      }
+    ]
+  }
+]

@@ -1,0 +1,139 @@
+{
+  "n_train_cases": 200000,
+  "n_test_cases": 20000,
+  "tables": {
+    "train": 24,
+    "unseen_test": 8,
+    "strict_test": 8,
+    "train_pool": [
+      100,
+      800
+    ],
+    "test_pool": [
+      100,
+      800
+    ],
+    "strict_pool": [
+      801,
+      1500
+    ]
+  },
+  "P50": {
+    "prediction": "P50",
+    "exact_unseen_tables": 0.996,
+    "exact_strict_disjoint_f": 0.3836,
+    "exact_train": 0.9957,
+    "count_acc": 0.997,
+    "digits_acc": 0.9873,
+    "bar": 0.95,
+    "verdict": "PASS"
+  },
+  "P44": {
+    "executor": "Qwen2.5-Coder-7B-Instruct f16 (local llama-server, greedy, 8 in-context examples)",
+    "n_ab": 300,
+    "unseen_tables_AB300": {
+      "exact": 0.6933333333333334,
+      "count_acc": 0.95,
+      "digits_acc": 0.6933333333333334,
+      "parse_failures": 0,
+      "n": 300
+    },
+    "strict_disjoint_f_AB120": {
+      "exact": 0.4166666666666667,
+      "count_acc": 0.44166666666666665,
+      "digits_acc": 0.4166666666666667,
+      "parse_failures": 0,
+      "n": 120
+    }
+  },
+  "contrast": {
+    "note": "identical question, identical 300 A/B cases, executor differs only in identity: the generalist gets 8 in-context examples from the train tables; the specialist is trained on them",
+    "ab_exact_generalist": 0.6933,
+    "ab_exact_specialist": 0.9933,
+    "ab_exact_generalist_strict": 0.4167,
+    "ab_exact_specialist_strict": 0.4333,
+    "generalist_examples": [
+      {
+        "q": 0,
+        "truth": [
+          5
+        ],
+        "got": [
+          5
+        ],
+        "raw": " 5"
+      },
+      {
+        "q": 1,
+        "truth": [
+          0
+        ],
+        "got": [
+          0
+        ],
+        "raw": " 0"
+      },
+      {
+        "q": 2,
+        "truth": [
+          6
+        ],
+        "got": [
+          8
+        ],
+        "raw": " 8"
+      },
+      {
+        "q": 3,
+        "truth": [
+          6,
+          0
+        ],
+        "got": [
+          0
+        ],
+        "raw": " 0"
+      },
+      {
+        "q": 4,
+        "truth": [
+          7
+        ],
+        "got": [
+          7
+        ],
+        "raw": " 7"
+      },
+      {
+        "q": 5,
+        "truth": [
+          2
+        ],
+        "got": [
+          0
+        ],
+        "raw": " 0"
+      },
+      {
+        "q": 6,
+        "truth": [
+          7
+        ],
+        "got": [
+          7
+        ],
+        "raw": " 7"
+      },
+      {
+        "q": 7,
+        "truth": [
+          3
+        ],
+        "got": [
+          3
+        ],
+        "raw": " 3"
+      }
+    ]
+  }
+}

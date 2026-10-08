@@ -1,0 +1,93 @@
+{
+  "P34": {
+    "prediction": "P34",
+    "rate_bits_per_tok": 1.408,
+    "ce_nats_per_tok": "0.9649",
+    "overhead_nats": 0.011,
+    "bar": 0.05,
+    "verdict": "PASS"
+  },
+  "P35": {
+    "prediction": "P35",
+    "regen_identical": true,
+    "flip_diverged_at": 747,
+    "verdict": "PASS"
+  },
+  "P36": {
+    "prediction": "P36",
+    "monotone": true,
+    "tau_min_marginal": 0.1,
+    "tau_min_marginal_ce_bits": 0.1133,
+    "tau_min_coder_overhead_bits": -0.0133,
+    "registered_bar": 0.05,
+    "ties_note": "registered bar assumed ties free; the tau=0.1 residual is the artifact's own near-tie entropy",
+    "verdict": "PASS"
+  },
+  "dial": [
+    {
+      "temp": 0.1,
+      "rate_bits": 0.3,
+      "rate_marginal": 0.1,
+      "ce_nats": "0.0785"
+    },
+    {
+      "temp": 0.3,
+      "rate_bits": 0.6,
+      "rate_marginal": 0.4,
+      "ce_nats": "0.2909"
+    },
+    {
+      "temp": 0.5,
+      "rate_bits": 0.95,
+      "rate_marginal": 0.75,
+      "ce_nats": "0.5269"
+    },
+    {
+      "temp": 0.8,
+      "rate_bits": 1.55,
+      "rate_marginal": 1.35,
+      "ce_nats": "0.9665"
+    },
+    {
+      "temp": 1.0,
+      "rate_bits": 1.95,
+      "rate_marginal": 1.75,
+      "ce_nats": "1.2218"
+    },
+    {
+      "temp": 1.5,
+      "rate_bits": 3.4,
+      "rate_marginal": 3.2,
+      "ce_nats": "2.2399"
+    },
+    {
+      "temp": 2.0,
+      "rate_bits": 5.2,
+      "rate_marginal": 5.0,
+      "ce_nats": "3.475"
+    },
+    {
+      "temp": 4.0,
+      "rate_bits": 7.25,
+      "rate_marginal": 7.05,
+      "ce_nats": "4.9106"
+    },
+    {
+      "temp": 10.0,
+      "rate_bits": 8.65,
+      "rate_marginal": 8.45,
+      "ce_nats": "5.8819"
+    },
+    {
+      "temp": 50.0,
+      "rate_bits": 9.15,
+      "rate_marginal": 8.95,
+      "ce_nats": "6.2195"
+    }
+  ],
+  "scripted": {
+    "n_tokens": 1500,
+    "bytes": 264,
+    "text_head": "there was a little girl named Lily. She lived in a big hive with her mommy. They loved to play with the icy flag were always happy to find a new salad.\nOne day, Lily asked her mommy if she could show "
+  }
+}

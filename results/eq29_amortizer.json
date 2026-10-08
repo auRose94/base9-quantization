@@ -1,0 +1,80 @@
+{
+  "subject": "roneneldan/TinyStories-33M",
+  "n_linear_params": 28311552,
+  "n_layers": 24,
+  "ppl_fp32": 40.6631,
+  "anchors": {
+    "rtn": 54.679,
+    "gptq": 43.644,
+    "gptq_wall_s": 275.0
+  },
+  "gptq": {
+    "ppl": 45.1809,
+    "wall_s": 38.2
+  },
+  "rtn": {
+    "ppl": 54.6793,
+    "wall_s": 0.9
+  },
+  "amortizer_rows": [
+    {
+      "mode": "amort_search_K4",
+      "k_cal_blocks": 4,
+      "ppl": 40.753,
+      "recovered_pct": 146.62,
+      "mse": 0.02977,
+      "stats_s": 0.05,
+      "search_s": 0.06
+    },
+    {
+      "mode": "amort_search_K16",
+      "k_cal_blocks": 16,
+      "ppl": 41.5261,
+      "recovered_pct": 138.48,
+      "mse": 0.02965,
+      "stats_s": 0.33,
+      "search_s": 0.06
+    },
+    {
+      "mode": "amort_search_K64",
+      "k_cal_blocks": 64,
+      "ppl": 42.0439,
+      "recovered_pct": 133.03,
+      "mse": 0.02962,
+      "stats_s": 1.54,
+      "search_s": 0.06
+    },
+    {
+      "mode": "amort_companion_mlp",
+      "k_cal_blocks": 64,
+      "ppl": 43.1107,
+      "recovered_pct": 121.8,
+      "log2f_mse": 0.026,
+      "mse": 0.0292,
+      "stats_s": 1.54,
+      "search_s": 0.002,
+      "train_s": 1.5
+    }
+  ],
+  "P49": {
+    "prediction": "P49",
+    "gap_ppl": 9.498,
+    "best_mode": "amort_search_K4",
+    "best_ppl": 40.753,
+    "recovered_pct": 146.62,
+    "bar_recovered": 80.0,
+    "recovered_pct_vs_recorded": 126.2,
+    "amortizer_cost_s": 0.11,
+    "gptq_cost_s": 38.2,
+    "compute_ratio": 347.0,
+    "compute_ratio_vs_recorded": 2500.0,
+    "bar_ratio": 100.0,
+    "delta_vs_gptq": -4.428,
+    "bar_delta": 0.05,
+    "delta_clause": "one-sided: amortized must be no worse than GPTQ + 0.05 ppl",
+    "beats_gptq": true,
+    "lloyd_max_crosscheck_ppl": 40.534,
+    "verdict": "PASS"
+  },
+  "note": "the registration's quoted numbers are TinyStories-33M (the '1.5B' attribution is a slip); the 1.5B's own exp18 delta is -0.45 code-ppl, cited not measured here. The amortizer is scale-only by construction: GPTQ's sequential placement compensation is the share no one-pass statistic can amortize."
+}

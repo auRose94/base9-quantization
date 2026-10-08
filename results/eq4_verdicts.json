@@ -1,0 +1,17 @@
+[
+  {
+    "prediction": "P5",
+    "pathB_maxabs": 1.5303492546081543e-05,
+    "tol": 0.0002,
+    "verdict": "PASS"
+  },
+  {
+    "pathA_vars_bytes": 260924,
+    "pathB_vars_bytes": 79300,
+    "fp32_weight_bytes": 1040128,
+    "pathA_val_loss": 2.0548460483551025,
+    "pathB_val_loss": 7.5189080238342285,
+    "fit_s": 0.35041082099996856,
+    "synth_s": 0.07980245099997774
+  }
+]

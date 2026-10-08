@@ -1,0 +1,290 @@
+{
+  "seg": 1024,
+  "R": 4096,
+  "K_sweep": [
+    4,
+    8,
+    16,
+    32
+  ],
+  "streams": {
+    "activation_site0": {
+      "n": 262144,
+      "alpha": 130,
+      "byte_M_sym_s": 240.3,
+      "rows": [
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 4,
+          "bytes": 173943.5,
+          "M_sym_s": 89.1,
+          "roundtrip": true,
+          "ratio": 0.371
+        },
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 8,
+          "bytes": 168102.5,
+          "M_sym_s": 84.0,
+          "roundtrip": true,
+          "ratio": 0.35
+        },
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 16,
+          "bytes": 156279.5,
+          "M_sym_s": 75.1,
+          "roundtrip": true,
+          "ratio": 0.313
+        },
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 32,
+          "bytes": 141588.0,
+          "M_sym_s": 61.6,
+          "roundtrip": true,
+          "ratio": 0.256
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 4,
+          "bytes": 174302.5,
+          "M_sym_s": 96.5,
+          "roundtrip": true,
+          "ratio": 0.402
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 8,
+          "bytes": 170586.1,
+          "M_sym_s": 90.7,
+          "roundtrip": true,
+          "ratio": 0.377
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 16,
+          "bytes": 166879.7,
+          "M_sym_s": 80.3,
+          "roundtrip": true,
+          "ratio": 0.334
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 32,
+          "bytes": 160626.6,
+          "M_sym_s": 65.2,
+          "roundtrip": true,
+          "ratio": 0.271
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 4,
+          "bytes": 178039.8,
+          "M_sym_s": 67.7,
+          "roundtrip": true,
+          "ratio": 0.282
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 8,
+          "bytes": 177215.2,
+          "M_sym_s": 64.9,
+          "roundtrip": true,
+          "ratio": 0.27
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 16,
+          "bytes": 175371.1,
+          "M_sym_s": 59.5,
+          "roundtrip": true,
+          "ratio": 0.248
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 32,
+          "bytes": 172129.5,
+          "M_sym_s": 50.6,
+          "roundtrip": true,
+          "ratio": 0.211
+        }
+      ],
+      "best_ratio": 0.402,
+      "best_row": {
+        "mode": 1,
+        "mode_name": "kmeans",
+        "K": 4,
+        "bytes": 174302.5,
+        "M_sym_s": 96.5,
+        "roundtrip": true,
+        "ratio": 0.402
+      },
+      "best_rate_row": {
+        "mode": 0,
+        "mode_name": "top1_argmax",
+        "K": 16,
+        "bytes": 156279.5,
+        "M_sym_s": 75.1,
+        "roundtrip": true,
+        "ratio": 0.313
+      }
+    },
+    "embed_weight": {
+      "n": 32768,
+      "alpha": 99,
+      "byte_M_sym_s": 225.5,
+      "rows": [
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 4,
+          "bytes": 26087.9,
+          "M_sym_s": 101.2,
+          "roundtrip": true,
+          "ratio": 0.449
+        },
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 8,
+          "bytes": 26098.6,
+          "M_sym_s": 96.1,
+          "roundtrip": true,
+          "ratio": 0.426
+        },
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 16,
+          "bytes": 26096.6,
+          "M_sym_s": 87.5,
+          "roundtrip": true,
+          "ratio": 0.388
+        },
+        {
+          "mode": 0,
+          "mode_name": "top1_argmax",
+          "K": 32,
+          "bytes": 26160.4,
+          "M_sym_s": 73.0,
+          "roundtrip": true,
+          "ratio": 0.324
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 4,
+          "bytes": 26092.3,
+          "M_sym_s": 106.2,
+          "roundtrip": true,
+          "ratio": 0.471
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 8,
+          "bytes": 26092.3,
+          "M_sym_s": 100.6,
+          "roundtrip": true,
+          "ratio": 0.446
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 16,
+          "bytes": 26092.3,
+          "M_sym_s": 91.1,
+          "roundtrip": true,
+          "ratio": 0.404
+        },
+        {
+          "mode": 1,
+          "mode_name": "kmeans",
+          "K": 32,
+          "bytes": 26092.3,
+          "M_sym_s": 75.6,
+          "roundtrip": true,
+          "ratio": 0.335
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 4,
+          "bytes": 26097.4,
+          "M_sym_s": 83.5,
+          "roundtrip": true,
+          "ratio": 0.37
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 8,
+          "bytes": 26099.8,
+          "M_sym_s": 80.1,
+          "roundtrip": true,
+          "ratio": 0.355
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 16,
+          "bytes": 26119.6,
+          "M_sym_s": 74.1,
+          "roundtrip": true,
+          "ratio": 0.329
+        },
+        {
+          "mode": 2,
+          "mode_name": "p2_bucket",
+          "K": 32,
+          "bytes": 26134.3,
+          "M_sym_s": 63.3,
+          "roundtrip": true,
+          "ratio": 0.281
+        }
+      ],
+      "best_ratio": 0.471,
+      "best_row": {
+        "mode": 1,
+        "mode_name": "kmeans",
+        "K": 4,
+        "bytes": 26092.3,
+        "M_sym_s": 106.2,
+        "roundtrip": true,
+        "ratio": 0.471
+      },
+      "best_rate_row": {
+        "mode": 0,
+        "mode_name": "top1_argmax",
+        "K": 4,
+        "bytes": 26087.9,
+        "M_sym_s": 101.2,
+        "roundtrip": true,
+        "ratio": 0.449
+      }
+    }
+  },
+  "P47": {
+    "prediction": "P47",
+    "bar": 0.5,
+    "best_by_stream": {
+      "activation_site0": 0.402,
+      "embed_weight": 0.471
+    },
+    "verdict": "FAIL",
+    "note": "three deterministic context keys (top-1 argmax / k-means / p2-bucket) x K, all with the branchless inverse-table decode at R=4096; eq31's K=1 control (no rate win) bounded the activation stream at 37.5%, so the bar was out of reach for this datapath regardless of the clusterer."
+  }
+}

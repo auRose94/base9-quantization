@@ -1,0 +1,174 @@
+{
+  "P45": {
+    "verdict": "FAIL",
+    "static_b9_trits": 470639,
+    "static_b9_bytes": 186591,
+    "container_bytes": 202081,
+    "bar_note": "bb <= static + ceil(measured realized KL / 8) + 4 B (packing slack). Measured on this subject: every clean chain lands at static + the pops' absorb stream + the realized KL -- the pop channel is a CARRIER on a deterministic artifact (no latent structure for q to explain), so the registered parity-to-small-win does not materialise and the null locates the slack: it is the absent structure, not posterior sharpness. The recycle variant (the paper's own chaining) is recorded as the negative control: the encoder-side recycling is not mirrorable (the pops' absorb demand exceeds the file).",
+    "table": [
+      {
+        "kind": "clean",
+        "beta": 1.0,
+        "bb_trits": 890097,
+        "delta_trits": 419458,
+        "realized_kl_bits": 0.0,
+        "expected_kl_bits": 0.0,
+        "bb_bytes": 352885,
+        "bar": 186595,
+        "p45": false,
+        "pops": 419458,
+        "n_draws": 265728,
+        "decode_ok": true,
+        "decode_err": null,
+        "mirror_fit": "reversed",
+        "seed": 1844293402179826231,
+        "story_ok": true,
+        "recycle_clean_served": 0,
+        "recycle_residue": 0
+      },
+      {
+        "kind": "clean",
+        "beta": 1.5,
+        "bb_trits": 844713,
+        "delta_trits": 374074,
+        "realized_kl_bits": 131422.79,
+        "expected_kl_bits": 19744.93,
+        "bb_bytes": 334893,
+        "bar": 203023,
+        "p45": false,
+        "pops": 332615,
+        "n_draws": 265728,
+        "decode_ok": true,
+        "decode_err": null,
+        "mirror_fit": "reversed",
+        "seed": 1954182715680064933,
+        "story_ok": true,
+        "recycle_clean_served": 0,
+        "recycle_residue": 0
+      },
+      {
+        "kind": "clean",
+        "beta": 2.0,
+        "bb_trits": 844846,
+        "delta_trits": 374207,
+        "realized_kl_bits": 226582.45,
+        "expected_kl_bits": 69141.56,
+        "bb_bytes": 334945,
+        "bar": 214918,
+        "p45": false,
+        "pops": 302728,
+        "n_draws": 265728,
+        "decode_ok": true,
+        "decode_err": null,
+        "mirror_fit": "reversed",
+        "seed": 5232366278238683222,
+        "story_ok": true,
+        "recycle_clean_served": 0,
+        "recycle_residue": 0
+      },
+      {
+        "kind": "recycle",
+        "beta": 1.0,
+        "bb_trits": 470643,
+        "delta_trits": 4,
+        "realized_kl_bits": 0.0,
+        "expected_kl_bits": 0.0,
+        "bb_bytes": 186593,
+        "bar": 186595,
+        "p45": true,
+        "pops": 380601,
+        "n_draws": 265728,
+        "decode_ok": false,
+        "decode_err": "tensor 35 digits diverge",
+        "mirror_fit": null,
+        "seed": null,
+        "story_ok": null,
+        "recycle_clean_served": 0,
+        "recycle_residue": 80
+      },
+      {
+        "kind": "recycle",
+        "beta": 1.5,
+        "bb_trits": 470728,
+        "delta_trits": 89,
+        "realized_kl_bits": 131415.03,
+        "expected_kl_bits": 19744.93,
+        "bb_bytes": 186626,
+        "bar": 203022,
+        "p45": true,
+        "pops": 332812,
+        "n_draws": 265728,
+        "decode_ok": false,
+        "decode_err": "tensor 35 digits diverge",
+        "mirror_fit": null,
+        "seed": null,
+        "story_ok": null,
+        "recycle_clean_served": 0,
+        "recycle_residue": 41452
+      },
+      {
+        "kind": "recycle",
+        "beta": 2.0,
+        "bb_trits": 470305,
+        "delta_trits": -334,
+        "realized_kl_bits": 226452.99,
+        "expected_kl_bits": 69141.56,
+        "bb_bytes": 186459,
+        "bar": 214902,
+        "p45": true,
+        "pops": 302335,
+        "n_draws": 265728,
+        "decode_ok": false,
+        "decode_err": "tensor 35 digits diverge",
+        "mirror_fit": null,
+        "seed": null,
+        "story_ok": null,
+        "recycle_clean_served": 0,
+        "recycle_residue": 71856
+      }
+    ]
+  },
+  "P46": {
+    "verdict": "PASS",
+    "chains_ok": true,
+    "posteriors": [
+      "1.0",
+      "1.5",
+      "2.0"
+    ],
+    "file_chain_ok": true,
+    "demo_file": 368083,
+    "corruption": [
+      {
+        "flip_byte": 44109,
+        "detected": true,
+        "where": "stream exhausted (likelihood pop)"
+      },
+      {
+        "flip_byte": 88219,
+        "detected": true,
+        "where": "tensor 6 digits diverge"
+      },
+      {
+        "flip_byte": 176439,
+        "detected": true,
+        "where": "tensor 16 digits diverge"
+      },
+      {
+        "flip_byte": 264659,
+        "detected": true,
+        "where": "tensor 27 digits diverge"
+      },
+      {
+        "flip_byte": 352859,
+        "detected": true,
+        "where": "tensor 35 digits diverge"
+      }
+    ],
+    "corruption_detected": "5/5",
+    "note": "three posteriors: bb roundtrip exact, mirror returns the encoder's initial state, draws roundtrip, weights identity, chain story = reference story; the file leg rebuilds weights + recovered draws from the single self-contained demo file (beta=1, the parity-size chain); byte-flip corruption always detected"
+  },
+  "subject": "eq5_C_k63emb99.k9",
+  "n_tensors": 36,
+  "n_digits": 265728
+}

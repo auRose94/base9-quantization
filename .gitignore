@@ -1,0 +1,18 @@
+# large data artifacts
+data/*.pt
+data/*.bin
+data/*.model
+data/TinyStories-valid.txt
+data/*.npy
+# results binaries that can be regenerated
+results/*.npz
+__pycache__/
+*.pyc
+# compiled coders / kernels (build them with the scripts; eq27-32)
+*.so
+# model artifacts (regenerable; base9's convention is to ignore all *.k9)
+results/*.k9
+results/*.gguf
+
+# derived corpus slices (regenerable from the upstream datasets; see README Repro)
+data/*.txt

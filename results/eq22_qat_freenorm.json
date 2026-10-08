@@ -1,0 +1,30 @@
+[
+  {
+    "prediction": "P39e",
+    "loss": 3.305013656616211,
+    "arm": 1.3143247365951538,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "eq22-identity",
+    "delta": 0.00143,
+    "bar": 0.005,
+    "verdict": "PASS"
+  },
+  {
+    "arms": [
+      {
+        "arm": "qat_free_k27",
+        "loss": 3.305013656616211,
+        "artifact_loss": 3.3064403533935547,
+        "bytes": 165823
+      },
+      {
+        "arm": "qat_ma_k27",
+        "loss": 1.326192021369934,
+        "artifact_loss": 1.3258095979690552,
+        "bytes": 166985
+      }
+    ]
+  }
+]

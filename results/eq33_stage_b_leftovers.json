@@ -1,0 +1,99 @@
+{
+  "device_axis": {
+    "A1": {
+      "device": "cuda",
+      "order_identical": true,
+      "spot_exact_vs_bigint": true,
+      "ms_per_pass": 26.66
+    },
+    "A2": {
+      "wraps_on_device": true,
+      "wrapped": -9223372036709301616,
+      "exact": 9223372037000250000,
+      "bigint_escalation_works": true,
+      "boundary": 9223372036854775807
+    },
+    "A3": {
+      "int64_matmul_supported": false,
+      "device_ms": null,
+      "cpu_numpy_ms": null
+    }
+  },
+  "fp64_twin": {
+    "rows": [
+      {
+        "site": "embed",
+        "twin_delta": 0.0,
+        "scale": 1.327228307723999,
+        "twin_rel": 0.0,
+        "eq24_exact_delta": 2.9194111683672475e-08,
+        "eq24_scale": 1.318359375
+      },
+      {
+        "site": "L0.attnorm",
+        "twin_delta": 9.5367431640625e-07,
+        "scale": 7.126164436340332,
+        "twin_rel": 1.3382715553726586e-07,
+        "eq24_exact_delta": 0.001371759446069598,
+        "eq24_scale": 5.6310014724731445
+      },
+      {
+        "site": "L0.scores",
+        "twin_delta": 0.00018310546875,
+        "scale": 266.88116455078125,
+        "twin_rel": 6.860936366873478e-07,
+        "eq24_exact_delta": 0.007862091064453125,
+        "eq24_scale": 1.7976931348623157e+308
+      },
+      {
+        "site": "L0.res_mid",
+        "twin_delta": 1.4632940292358398e-05,
+        "scale": 1.7225691080093384,
+        "twin_rel": 8.494834967328968e-06,
+        "eq24_exact_delta": 3.1381503472829864e-05,
+        "eq24_scale": 1.556860327720642
+      },
+      {
+        "site": "L0.ffnorm",
+        "twin_delta": 1.7881393432617188e-05,
+        "scale": 2.9461989402770996,
+        "twin_rel": 6.069309573146267e-06,
+        "eq24_exact_delta": 0.0013717515968982297,
+        "eq24_scale": 2.447187900543213
+      },
+      {
+        "site": "L0.silu",
+        "twin_delta": 2.288818359375e-05,
+        "scale": 5.669881820678711,
+        "twin_rel": 4.036800821892648e-06,
+        "eq24_exact_delta": null,
+        "eq24_scale": null
+      },
+      {
+        "site": "L0.res_out",
+        "twin_delta": 1.5854835510253906e-05,
+        "scale": 6.246230125427246,
+        "twin_rel": 2.53830473611784e-06,
+        "eq24_exact_delta": 0.0012591407303359226,
+        "eq24_scale": 4.074127197265625
+      },
+      {
+        "site": "logits",
+        "twin_delta": 0.00060272216796875,
+        "scale": 28.396581649780273,
+        "twin_rel": 2.1225166303543925e-05,
+        "eq24_exact_delta": 0.05013275146484375,
+        "eq24_scale": 20.739070892333984
+      }
+    ],
+    "ratios": [
+      1438.39,
+      42.94,
+      2.14,
+      76.71,
+      79.42,
+      83.18
+    ],
+    "verdict": "the recorded exact-vs-fp32 deltas EXCEED the twin's own fp32-vs-fp64 spread by 3-3e4x at the shared sites: the wobble is the exact track's own defined rounding (the per-layer regrid), not the fp32 boundary's softness -- the registered noise-vs-chaos guess is split the other way"
+  }
+}

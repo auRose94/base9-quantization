@@ -1,0 +1,14 @@
+[
+  {
+    "prediction": "P1",
+    "cond1": 0.0,
+    "cond2": 1.117,
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "P2",
+    "real_rank_meets": 1.0,
+    "ctrl_rank_meets": 0.0,
+    "verdict": "PASS"
+  }
+]

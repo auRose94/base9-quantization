@@ -1,0 +1,83 @@
+{
+  "cadence_min": 1024,
+  "streams": {
+    "activation_site0": {
+      "n": 262144,
+      "alpha": 130,
+      "chunks": 256,
+      "companion_chunks": 251,
+      "ch_bits_first": 5496.6,
+      "ch_bits_last": 2402.8,
+      "static_bytes": 175974.9,
+      "ctx_bytes": 91585.5,
+      "win_pct": 47.955,
+      "build_us_per_chunk": 137208.7,
+      "build_ns_per_sym": 133992.8,
+      "byte_M_sym_s": 242.8,
+      "base9_M_sym_s": 163.2,
+      "ctx_M_sym_s": {
+        "1024": 38.4,
+        "4096": 35.7,
+        "16384": 37.0,
+        "whole": 43.1
+      },
+      "segs_per_cadence": {
+        "1024": 256,
+        "4096": 64,
+        "16384": 16,
+        "whole": 1
+      },
+      "p47_ratio_1k": 0.158,
+      "torch_forward_us": 5.9,
+      "roundtrip": "exact",
+      "machinery": "bit-identical to base9"
+    },
+    "embed_weight": {
+      "n": 32768,
+      "alpha": 99,
+      "chunks": 32,
+      "companion_chunks": 16,
+      "ch_bits_first": 5823.2,
+      "ch_bits_last": 6092.6,
+      "static_bytes": 24749.2,
+      "ctx_bytes": 22114.1,
+      "win_pct": 10.648,
+      "build_us_per_chunk": 33079.2,
+      "build_ns_per_sym": 32303.9,
+      "byte_M_sym_s": 227.9,
+      "base9_M_sym_s": 186.9,
+      "ctx_M_sym_s": {
+        "1024": 45.9,
+        "4096": 57.7,
+        "16384": 61.9,
+        "whole": 64.3
+      },
+      "segs_per_cadence": {
+        "1024": 32,
+        "4096": 8,
+        "16384": 2,
+        "whole": 1
+      },
+      "p47_ratio_1k": 0.201,
+      "torch_forward_us": 5.7,
+      "roundtrip": "exact",
+      "machinery": "bit-identical to base9"
+    }
+  },
+  "P47": {
+    "prediction": "P47",
+    "ratios": {
+      "activation_site0": 0.158,
+      "embed_weight": 0.201
+    },
+    "bar": 0.5,
+    "verdict": "FAIL",
+    "note": "cadence tested at 1k/4k/16k/whole; the companion's per-chunk build and a per-symbol torch forward are recorded separately (the constraint's reason: per-symbol inference costs ~1e4x the loop's ns/symbol)"
+  },
+  "cadences": [
+    1024,
+    4096,
+    16384,
+    "whole"
+  ]
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "prediction": "P3",
+    "qualifying_at_6bpp": [],
+    "qualifying_at_4bpp": [],
+    "verdict": "FAIL"
+  },
+  {
+    "prediction": "RQ3probe_shared_basis",
+    "data": {
+      "attention.wk.weight": {
+        "mean_u1_cos": 0.347,
+        "mean_v1_cos": 0.809
+      },
+      "attention.wo.weight": {
+        "mean_u1_cos": 0.281,
+        "mean_v1_cos": 0.083
+      },
+      "attention.wq.weight": {
+        "mean_u1_cos": 0.331,
+        "mean_v1_cos": 0.722
+      },
+      "attention.wv.weight": {
+        "mean_u1_cos": 0.131,
+        "mean_v1_cos": 0.097
+      },
+      "feed_forward.w1.weight": {
+        "mean_u1_cos": 0.108,
+        "mean_v1_cos": 0.097
+      },
+      "feed_forward.w2.weight": {
+        "mean_u1_cos": 0.408,
+        "mean_v1_cos": 0.075
+      },
+      "feed_forward.w3.weight": {
+        "mean_u1_cos": 0.059,
+        "mean_v1_cos": 0.142
+      }
+    },
+    "verdict": "INFO"
+  }
+]

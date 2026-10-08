@@ -1,0 +1,188 @@
+{
+  "rows": {
+    "norm_only": {
+      "loss": 1.3717,
+      "vs_arm_pct": 4.36
+    },
+    "att_only_c4": {
+      "loss": 1.9672,
+      "vs_arm_pct": 49.67
+    },
+    "att_only_c1": {
+      "loss": 1.6224,
+      "vs_arm_pct": 23.44
+    },
+    "silu_only": {
+      "loss": 1.3885,
+      "vs_arm_pct": 5.65
+    },
+    "joint_c4": {
+      "loss": 2.2759,
+      "vs_arm_pct": 73.16
+    },
+    "joint_c1": {
+      "loss": 1.8658,
+      "vs_arm_pct": 41.96
+    },
+    "joint_uncal": {
+      "loss": 2.4923,
+      "vs_arm_pct": 89.63
+    }
+  },
+  "lams": [
+    0.81354,
+    0.79465,
+    0.7709,
+    0.77203,
+    0.76077,
+    0.7639,
+    0.75555,
+    0.76122,
+    0.75441,
+    0.76304,
+    0.74955
+  ],
+  "P39a": {
+    "prediction": "P39a",
+    "loss": 1.3717,
+    "vs_arm_pct": 4.36,
+    "bar": 1.0,
+    "verdict": "FAIL"
+  },
+  "P39b": {
+    "prediction": "P39b",
+    "loss": 1.6224,
+    "vs_arm_pct": 23.44,
+    "kernel": "max(0,1+s/c)^2, c reported for 4.0 and 1.0",
+    "bar": 1.0,
+    "verdict": "FAIL"
+  },
+  "P39c": {
+    "prediction": "P39c",
+    "swap": "silu-r (reported, not registered)",
+    "loss": 1.3885,
+    "vs_arm_pct": 5.65
+  },
+  "P39": {
+    "prediction": "P39",
+    "loss": 1.8658,
+    "vs_arm_pct": 41.96,
+    "bar": 2.0,
+    "verdict": "FAIL"
+  },
+  "P40": {
+    "prediction": "P40",
+    "best_time_gain_pct": 7.41,
+    "bar": 5.0,
+    "exp12_null_max_pct": 0.2,
+    "detail": {
+      "fp": {
+        "best_time_pct": 7.41,
+        "best_channel_pct": 2.52,
+        "per_tensor": [
+          {
+            "time": 7.41,
+            "channel": 2.41
+          },
+          {
+            "time": 0.57,
+            "channel": 1.27
+          },
+          {
+            "time": 1.57,
+            "channel": 2.52
+          },
+          {
+            "time": 0.33,
+            "channel": 1.38
+          },
+          {
+            "time": 0.86,
+            "channel": 2.12
+          },
+          {
+            "time": 0.27,
+            "channel": 1.56
+          },
+          {
+            "time": 0.69,
+            "channel": 2.2
+          },
+          {
+            "time": 0.26,
+            "channel": 1.92
+          },
+          {
+            "time": 0.5,
+            "channel": 2.0
+          },
+          {
+            "time": 0.31,
+            "channel": 1.87
+          },
+          {
+            "time": 4.77,
+            "channel": 2.16
+          }
+        ]
+      },
+      "sub_norm": {
+        "best_time_pct": 7.35,
+        "best_channel_pct": 2.44,
+        "per_tensor": [
+          {
+            "time": 7.35,
+            "channel": 2.44
+          },
+          {
+            "time": 1.27,
+            "channel": 1.46
+          },
+          {
+            "time": 1.7,
+            "channel": 2.39
+          },
+          {
+            "time": 0.37,
+            "channel": 1.42
+          },
+          {
+            "time": 0.9,
+            "channel": 2.16
+          },
+          {
+            "time": 0.29,
+            "channel": 1.58
+          },
+          {
+            "time": 0.7,
+            "channel": 2.23
+          },
+          {
+            "time": 0.28,
+            "channel": 1.96
+          },
+          {
+            "time": 0.53,
+            "channel": 2.06
+          },
+          {
+            "time": 0.33,
+            "channel": 1.91
+          },
+          {
+            "time": 4.8,
+            "channel": 2.17
+          }
+        ]
+      }
+    },
+    "verdict": "PASS"
+  },
+  "anchors": {
+    "arm_k27": 1.3143247365951538,
+    "cpu_reeval": 1.31795,
+    "lambda_note": "lams calibrated on train slice (fit pool, disjoint from eval windows)"
+  },
+  "wall_s": 183.9
+}

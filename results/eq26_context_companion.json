@@ -1,0 +1,1413 @@
+{
+  "subject_weights": [
+    "eq9_QAT_k27emb99.k9",
+    "eq5_C_k63emb99.k9"
+  ],
+  "split": 0.8,
+  "weights": {
+    "aggregate_recovery_pct": 0.502,
+    "aggregate_codec_recovery_pct": 0.502,
+    "max_single_recovery_pct": 2.748,
+    "max_single_codec_recovery_pct": 2.748,
+    "max_single_tensor": "tok_embeddings.weight",
+    "gru_recovery_pct": -10.011,
+    "gru_bits": 7.1852,
+    "per_tensor": [
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "tok_embeddings.weight",
+        "n": 32768,
+        "order0_bits": 6.5313,
+        "order1_bits": 6.5171,
+        "order2_bits": 6.5171,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": 0.218,
+        "codec_recovery_pct": 0.218
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 4.362,
+        "order1_bits": 4.362,
+        "order2_bits": 4.362,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 4.545,
+        "order1_bits": 4.545,
+        "order2_bits": 4.545,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 4.2188,
+        "order1_bits": 4.2188,
+        "order2_bits": 4.2188,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 4.2458,
+        "order1_bits": 4.2458,
+        "order2_bits": 4.2458,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 4.3945,
+        "order1_bits": 4.3983,
+        "order2_bits": 4.3983,
+        "lams": [
+          0.2,
+          0.0
+        ],
+        "recovery_pct": -0.086,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 4.1981,
+        "order1_bits": 4.0895,
+        "order2_bits": 4.0827,
+        "lams": [
+          0.65,
+          0.05
+        ],
+        "recovery_pct": 2.747,
+        "codec_recovery_pct": 2.747
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.0.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 4.3992,
+        "order1_bits": 4.4,
+        "order2_bits": 4.4,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.018,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 4.4473,
+        "order1_bits": 4.4471,
+        "order2_bits": 4.4471,
+        "lams": [
+          0.1,
+          0.0
+        ],
+        "recovery_pct": 0.004,
+        "codec_recovery_pct": 0.004
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 4.534,
+        "order1_bits": 4.5374,
+        "order2_bits": 4.5374,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.076,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 4.3821,
+        "order1_bits": 4.3821,
+        "order2_bits": 4.4052,
+        "lams": [
+          0.0,
+          0.05
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 4.458,
+        "order1_bits": 4.4629,
+        "order2_bits": 4.4629,
+        "lams": [
+          0.1,
+          0.0
+        ],
+        "recovery_pct": -0.109,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 4.3908,
+        "order1_bits": 4.3912,
+        "order2_bits": 4.3912,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.009,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 4.2433,
+        "order1_bits": 4.1408,
+        "order2_bits": 4.1386,
+        "lams": [
+          0.6,
+          0.05
+        ],
+        "recovery_pct": 2.468,
+        "codec_recovery_pct": 2.468
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.1.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 4.4434,
+        "order1_bits": 4.4437,
+        "order2_bits": 4.4437,
+        "lams": [
+          0.1,
+          0.0
+        ],
+        "recovery_pct": -0.007,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 4.3586,
+        "order1_bits": 4.368,
+        "order2_bits": 4.368,
+        "lams": [
+          0.2,
+          0.0
+        ],
+        "recovery_pct": -0.215,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 4.5024,
+        "order1_bits": 4.5024,
+        "order2_bits": 4.5024,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 4.2868,
+        "order1_bits": 4.2868,
+        "order2_bits": 4.2868,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 4.254,
+        "order1_bits": 4.254,
+        "order2_bits": 4.254,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 4.3879,
+        "order1_bits": 4.3879,
+        "order2_bits": 4.3879,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 4.2914,
+        "order1_bits": 4.2011,
+        "order2_bits": 4.1992,
+        "lams": [
+          0.7,
+          0.05
+        ],
+        "recovery_pct": 2.149,
+        "codec_recovery_pct": 2.149
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.2.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 4.3865,
+        "order1_bits": 4.3865,
+        "order2_bits": 4.3865,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 4.4558,
+        "order1_bits": 4.4558,
+        "order2_bits": 4.4558,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 4.5237,
+        "order1_bits": 4.5237,
+        "order2_bits": 4.5237,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 4.361,
+        "order1_bits": 4.361,
+        "order2_bits": 4.361,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 4.4268,
+        "order1_bits": 4.428,
+        "order2_bits": 4.428,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.026,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 4.3619,
+        "order1_bits": 4.3625,
+        "order2_bits": 4.3625,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.013,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 4.2466,
+        "order1_bits": 4.1343,
+        "order2_bits": 4.13,
+        "lams": [
+          0.7,
+          0.05
+        ],
+        "recovery_pct": 2.748,
+        "codec_recovery_pct": 2.748
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.3.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 4.3733,
+        "order1_bits": 4.3733,
+        "order2_bits": 4.3733,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 4.4411,
+        "order1_bits": 4.4411,
+        "order2_bits": 4.4439,
+        "lams": [
+          0.0,
+          0.05
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 4.451,
+        "order1_bits": 4.4539,
+        "order2_bits": 4.4539,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.066,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 4.3939,
+        "order1_bits": 4.3939,
+        "order2_bits": 4.3939,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 4.3203,
+        "order1_bits": 4.3203,
+        "order2_bits": 4.3203,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 4.3757,
+        "order1_bits": 4.3757,
+        "order2_bits": 4.3757,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 4.2473,
+        "order1_bits": 4.1454,
+        "order2_bits": 4.1468,
+        "lams": [
+          0.7,
+          0.05
+        ],
+        "recovery_pct": 2.4,
+        "codec_recovery_pct": 2.4
+      },
+      {
+        "art": "eq9_QAT_k27emb99.k9",
+        "tensor": "layers.4.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 4.4176,
+        "order1_bits": 4.4176,
+        "order2_bits": 4.4176,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "tok_embeddings.weight",
+        "n": 32768,
+        "order0_bits": 6.4555,
+        "order1_bits": 6.4555,
+        "order2_bits": 6.4555,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 5.6592,
+        "order1_bits": 5.6592,
+        "order2_bits": 5.6592,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 5.8374,
+        "order1_bits": 5.8353,
+        "order2_bits": 5.8353,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": 0.036,
+        "codec_recovery_pct": 0.036
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 5.4766,
+        "order1_bits": 5.4766,
+        "order2_bits": 5.4766,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 5.4796,
+        "order1_bits": 5.4758,
+        "order2_bits": 5.4758,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": 0.071,
+        "codec_recovery_pct": 0.071
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 5.6217,
+        "order1_bits": 5.6217,
+        "order2_bits": 5.6217,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 5.3706,
+        "order1_bits": 5.2518,
+        "order2_bits": 5.2518,
+        "lams": [
+          0.4,
+          0.0
+        ],
+        "recovery_pct": 2.214,
+        "codec_recovery_pct": 2.214
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.0.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 5.6491,
+        "order1_bits": 5.6491,
+        "order2_bits": 5.6491,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 5.6894,
+        "order1_bits": 5.6894,
+        "order2_bits": 5.6894,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 5.7895,
+        "order1_bits": 5.7895,
+        "order2_bits": 5.8107,
+        "lams": [
+          0.0,
+          0.05
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 5.5278,
+        "order1_bits": 5.5278,
+        "order2_bits": 5.5278,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 5.6539,
+        "order1_bits": 5.6539,
+        "order2_bits": 5.6539,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 5.6395,
+        "order1_bits": 5.6395,
+        "order2_bits": 5.6395,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 5.3951,
+        "order1_bits": 5.2849,
+        "order2_bits": 5.2849,
+        "lams": [
+          0.4,
+          0.0
+        ],
+        "recovery_pct": 2.041,
+        "codec_recovery_pct": 2.041
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.1.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 5.6792,
+        "order1_bits": 5.6792,
+        "order2_bits": 5.6792,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 5.6441,
+        "order1_bits": 5.6441,
+        "order2_bits": 5.6441,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 5.7536,
+        "order1_bits": 5.7536,
+        "order2_bits": 5.7536,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 5.5383,
+        "order1_bits": 5.5383,
+        "order2_bits": 5.5383,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 5.4637,
+        "order1_bits": 5.4637,
+        "order2_bits": 5.4637,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 5.6227,
+        "order1_bits": 5.6245,
+        "order2_bits": 5.6245,
+        "lams": [
+          0.05,
+          0.0
+        ],
+        "recovery_pct": -0.031,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 5.4557,
+        "order1_bits": 5.3461,
+        "order2_bits": 5.3461,
+        "lams": [
+          0.45,
+          0.0
+        ],
+        "recovery_pct": 2.008,
+        "codec_recovery_pct": 2.008
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.2.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 5.6397,
+        "order1_bits": 5.6397,
+        "order2_bits": 5.6397,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 5.6924,
+        "order1_bits": 5.6924,
+        "order2_bits": 5.6924,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 5.7395,
+        "order1_bits": 5.7395,
+        "order2_bits": 5.7395,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 5.6508,
+        "order1_bits": 5.6508,
+        "order2_bits": 5.6508,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 5.6997,
+        "order1_bits": 5.6997,
+        "order2_bits": 5.6997,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 5.6167,
+        "order1_bits": 5.6167,
+        "order2_bits": 5.6167,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 5.3806,
+        "order1_bits": 5.2674,
+        "order2_bits": 5.2674,
+        "lams": [
+          0.45,
+          0.0
+        ],
+        "recovery_pct": 2.104,
+        "codec_recovery_pct": 2.104
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.3.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 5.6292,
+        "order1_bits": 5.6292,
+        "order2_bits": 5.6292,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.attention.wq.weight",
+        "n": 4096,
+        "order0_bits": 5.7111,
+        "order1_bits": 5.7111,
+        "order2_bits": 5.7111,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.attention.wk.weight",
+        "n": 2048,
+        "order0_bits": 5.6915,
+        "order1_bits": 5.6915,
+        "order2_bits": 5.6915,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.attention.wv.weight",
+        "n": 2048,
+        "order0_bits": 5.6499,
+        "order1_bits": 5.6499,
+        "order2_bits": 5.6499,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.attention.wo.weight",
+        "n": 4096,
+        "order0_bits": 5.5467,
+        "order1_bits": 5.5467,
+        "order2_bits": 5.5467,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": -0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.feed_forward.w1.weight",
+        "n": 11008,
+        "order0_bits": 5.6083,
+        "order1_bits": 5.6083,
+        "order2_bits": 5.6083,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.feed_forward.w2.weight",
+        "n": 12288,
+        "order0_bits": 5.4089,
+        "order1_bits": 5.2988,
+        "order2_bits": 5.2988,
+        "lams": [
+          0.45,
+          0.0
+        ],
+        "recovery_pct": 2.034,
+        "codec_recovery_pct": 2.034
+      },
+      {
+        "art": "eq5_C_k63emb99.k9",
+        "tensor": "layers.4.feed_forward.w3.weight",
+        "n": 11008,
+        "order0_bits": 5.6764,
+        "order1_bits": 5.6764,
+        "order2_bits": 5.6764,
+        "lams": [
+          0.0,
+          0.0
+        ],
+        "recovery_pct": 0.0,
+        "codec_recovery_pct": 0.0
+      }
+    ]
+  },
+  "activations": {
+    "p40_crosscheck_pct": {
+      "fp": 7.41,
+      "sub_norm": 7.35
+    },
+    "p40_recorded_pct": 7.4,
+    "best_recovery_pct": 50.738,
+    "best_codec_recovery_pct": 50.738,
+    "best_variant": "fp",
+    "best_site": 0,
+    "best_lams": [
+      0.95,
+      0.95
+    ],
+    "best_model": "order2",
+    "gru_recovery_pct": 42.236,
+    "gru_bits": 3.1028,
+    "per_site": [
+      {
+        "variant": "fp",
+        "site": 0,
+        "n": 262144,
+        "order0_bits": 5.3716,
+        "order1_bits": 5.0214,
+        "order2_bits": 2.6462,
+        "lams": [
+          0.95,
+          0.95
+        ],
+        "in_sample_order1_pct": 7.26,
+        "recovery_pct": 50.738,
+        "codec_recovery_pct": 50.738
+      },
+      {
+        "variant": "fp",
+        "site": 1,
+        "n": 262144,
+        "order0_bits": 4.3682,
+        "order1_bits": 4.3598,
+        "order2_bits": 4.3277,
+        "lams": [
+          0.75,
+          0.45
+        ],
+        "in_sample_order1_pct": 0.568,
+        "recovery_pct": 0.927,
+        "codec_recovery_pct": 0.927
+      },
+      {
+        "variant": "fp",
+        "site": 2,
+        "n": 262144,
+        "order0_bits": 5.5326,
+        "order1_bits": 5.5028,
+        "order2_bits": 5.3507,
+        "lams": [
+          0.55,
+          0.35
+        ],
+        "in_sample_order1_pct": 1.549,
+        "recovery_pct": 3.288,
+        "codec_recovery_pct": 3.288
+      },
+      {
+        "variant": "fp",
+        "site": 3,
+        "n": 262144,
+        "order0_bits": 4.7224,
+        "order1_bits": 4.7189,
+        "order2_bits": 4.6963,
+        "lams": [
+          0.55,
+          0.3
+        ],
+        "in_sample_order1_pct": 0.321,
+        "recovery_pct": 0.552,
+        "codec_recovery_pct": 0.552
+      },
+      {
+        "variant": "fp",
+        "site": 4,
+        "n": 262144,
+        "order0_bits": 5.4797,
+        "order1_bits": 5.4737,
+        "order2_bits": 5.4464,
+        "lams": [
+          0.3,
+          0.15
+        ],
+        "in_sample_order1_pct": 0.844,
+        "recovery_pct": 0.608,
+        "codec_recovery_pct": 0.608
+      },
+      {
+        "variant": "fp",
+        "site": 5,
+        "n": 262144,
+        "order0_bits": 4.8393,
+        "order1_bits": 4.8374,
+        "order2_bits": 4.8341,
+        "lams": [
+          0.4,
+          0.1
+        ],
+        "in_sample_order1_pct": 0.266,
+        "recovery_pct": 0.107,
+        "codec_recovery_pct": 0.107
+      },
+      {
+        "variant": "fp",
+        "site": 6,
+        "n": 262144,
+        "order0_bits": 5.4902,
+        "order1_bits": 5.4884,
+        "order2_bits": 5.4851,
+        "lams": [
+          0.2,
+          0.05
+        ],
+        "in_sample_order1_pct": 0.676,
+        "recovery_pct": 0.094,
+        "codec_recovery_pct": 0.094
+      },
+      {
+        "variant": "fp",
+        "site": 7,
+        "n": 262144,
+        "order0_bits": 5.0117,
+        "order1_bits": 5.0111,
+        "order2_bits": 5.0098,
+        "lams": [
+          0.25,
+          0.05
+        ],
+        "in_sample_order1_pct": 0.251,
+        "recovery_pct": 0.039,
+        "codec_recovery_pct": 0.039
+      },
+      {
+        "variant": "fp",
+        "site": 8,
+        "n": 262144,
+        "order0_bits": 5.4519,
+        "order1_bits": 5.4511,
+        "order2_bits": 5.4497,
+        "lams": [
+          0.15,
+          0.05
+        ],
+        "in_sample_order1_pct": 0.493,
+        "recovery_pct": 0.041,
+        "codec_recovery_pct": 0.041
+      },
+      {
+        "variant": "fp",
+        "site": 9,
+        "n": 262144,
+        "order0_bits": 5.1932,
+        "order1_bits": 5.1929,
+        "order2_bits": 5.1929,
+        "lams": [
+          0.1,
+          0.0
+        ],
+        "in_sample_order1_pct": 0.3,
+        "recovery_pct": 0.006,
+        "codec_recovery_pct": 0.006
+      },
+      {
+        "variant": "fp",
+        "site": 10,
+        "n": 262144,
+        "order0_bits": 5.4816,
+        "order1_bits": 5.3239,
+        "order2_bits": 5.3193,
+        "lams": [
+          0.75,
+          0.05
+        ],
+        "in_sample_order1_pct": 4.637,
+        "recovery_pct": 2.962,
+        "codec_recovery_pct": 2.962
+      },
+      {
+        "variant": "sub_norm",
+        "site": 0,
+        "n": 262144,
+        "order0_bits": 5.3662,
+        "order1_bits": 5.0183,
+        "order2_bits": 2.6532,
+        "lams": [
+          0.95,
+          0.95
+        ],
+        "in_sample_order1_pct": 7.195,
+        "recovery_pct": 50.556,
+        "codec_recovery_pct": 50.556
+      },
+      {
+        "variant": "sub_norm",
+        "site": 1,
+        "n": 262144,
+        "order0_bits": 4.3862,
+        "order1_bits": 4.3784,
+        "order2_bits": 4.3454,
+        "lams": [
+          0.5,
+          0.45
+        ],
+        "in_sample_order1_pct": 1.249,
+        "recovery_pct": 0.929,
+        "codec_recovery_pct": 0.929
+      },
+      {
+        "variant": "sub_norm",
+        "site": 2,
+        "n": 262144,
+        "order0_bits": 5.4834,
+        "order1_bits": 5.4458,
+        "order2_bits": 5.289,
+        "lams": [
+          0.6,
+          0.4
+        ],
+        "in_sample_order1_pct": 1.667,
+        "recovery_pct": 3.546,
+        "codec_recovery_pct": 3.546
+      },
+      {
+        "variant": "sub_norm",
+        "site": 3,
+        "n": 262144,
+        "order0_bits": 4.7313,
+        "order1_bits": 4.7262,
+        "order2_bits": 4.7045,
+        "lams": [
+          0.55,
+          0.3
+        ],
+        "in_sample_order1_pct": 0.356,
+        "recovery_pct": 0.567,
+        "codec_recovery_pct": 0.567
+      },
+      {
+        "variant": "sub_norm",
+        "site": 4,
+        "n": 262144,
+        "order0_bits": 5.4727,
+        "order1_bits": 5.4667,
+        "order2_bits": 5.4449,
+        "lams": [
+          0.3,
+          0.15
+        ],
+        "in_sample_order1_pct": 0.885,
+        "recovery_pct": 0.508,
+        "codec_recovery_pct": 0.508
+      },
+      {
+        "variant": "sub_norm",
+        "site": 5,
+        "n": 262144,
+        "order0_bits": 4.8387,
+        "order1_bits": 4.8367,
+        "order2_bits": 4.8338,
+        "lams": [
+          0.35,
+          0.1
+        ],
+        "in_sample_order1_pct": 0.288,
+        "recovery_pct": 0.103,
+        "codec_recovery_pct": 0.103
+      },
+      {
+        "variant": "sub_norm",
+        "site": 6,
+        "n": 262144,
+        "order0_bits": 5.4902,
+        "order1_bits": 5.4886,
+        "order2_bits": 5.4856,
+        "lams": [
+          0.15,
+          0.05
+        ],
+        "in_sample_order1_pct": 0.684,
+        "recovery_pct": 0.083,
+        "codec_recovery_pct": 0.083
+      },
+      {
+        "variant": "sub_norm",
+        "site": 7,
+        "n": 262144,
+        "order0_bits": 5.0115,
+        "order1_bits": 5.0105,
+        "order2_bits": 5.0094,
+        "lams": [
+          0.25,
+          0.05
+        ],
+        "in_sample_order1_pct": 0.278,
+        "recovery_pct": 0.044,
+        "codec_recovery_pct": 0.044
+      },
+      {
+        "variant": "sub_norm",
+        "site": 8,
+        "n": 262144,
+        "order0_bits": 5.444,
+        "order1_bits": 5.4435,
+        "order2_bits": 5.4435,
+        "lams": [
+          0.15,
+          0.0
+        ],
+        "in_sample_order1_pct": 0.519,
+        "recovery_pct": 0.008,
+        "codec_recovery_pct": 0.008
+      },
+      {
+        "variant": "sub_norm",
+        "site": 9,
+        "n": 262144,
+        "order0_bits": 5.1821,
+        "order1_bits": 5.1817,
+        "order2_bits": 5.1817,
+        "lams": [
+          0.15,
+          0.0
+        ],
+        "in_sample_order1_pct": 0.321,
+        "recovery_pct": 0.008,
+        "codec_recovery_pct": 0.008
+      },
+      {
+        "variant": "sub_norm",
+        "site": 10,
+        "n": 262144,
+        "order0_bits": 5.4782,
+        "order1_bits": 5.3256,
+        "order2_bits": 5.3211,
+        "lams": [
+          0.75,
+          0.05
+        ],
+        "in_sample_order1_pct": 4.67,
+        "recovery_pct": 2.868,
+        "codec_recovery_pct": 2.868
+      }
+    ]
+  },
+  "tokens": {
+    "n": 8000,
+    "static_bits_per_tok": 7.0421,
+    "order1_bits": 4.8665,
+    "order2_bits": 4.4497,
+    "recovery_pct": 36.813,
+    "gru_recovery_pct": 0.0,
+    "gru_bits_per_tok": 8.4629,
+    "lm_ceiling_bits_per_tok": 1.3921,
+    "lm_vs_static_recovery_pct": 80.232,
+    "story_head": "there was a little girl named Lily. She lived in a big hive with her mommy. They loved to play with the icy flag were always happy to find a new salad.\nO"
+  },
+  "P48": {
+    "prediction": "P48",
+    "best_activation_recovery_pct": 50.738,
+    "best_model": "order2",
+    "best_lams": [
+      0.95,
+      0.95
+    ],
+    "gru_recovery_pct": 42.236,
+    "best_of_all_pct": 50.738,
+    "bar": 20.0,
+    "verdict": "PASS"
+  },
+  "weight_null": {
+    "registered_expectation_pct": "~0 (exp12 null 0.0-0.2)",
+    "max_single_pct": 2.748,
+    "max_single_codec_pct": 2.748,
+    "aggregate_pct": 0.502,
+    "aggregate_codec_pct": 0.502,
+    "gru_pct": -10.011,
+    "surprise_loud_bar": 2.0,
+    "surprise": true,
+    "verdict": "SURPRISE(flagged)"
+  },
+  "n_activations": 22
+}

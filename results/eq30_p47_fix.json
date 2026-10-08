@@ -1,0 +1,118 @@
+{
+  "seg": 1024,
+  "R_sweep": [
+    1024,
+    4096,
+    16384,
+    65536
+  ],
+  "streams": {
+    "activation_site0": {
+      "n": 262144,
+      "alpha": 130,
+      "lams": [
+        0.95,
+        0.95
+      ],
+      "rows": [
+        {
+          "R": 1024,
+          "bytes": 92023.5,
+          "win_vs_static": null,
+          "M_sym_s": 31.2,
+          "roundtrip": true
+        },
+        {
+          "R": 4096,
+          "bytes": 93592.2,
+          "win_vs_static": null,
+          "M_sym_s": 36.1,
+          "roundtrip": true
+        },
+        {
+          "R": 16384,
+          "bytes": 99600.0,
+          "win_vs_static": null,
+          "M_sym_s": 37.6,
+          "roundtrip": true
+        },
+        {
+          "R": 65536,
+          "bytes": 126983.0,
+          "win_vs_static": null,
+          "M_sym_s": 41.3,
+          "roundtrip": true
+        }
+      ],
+      "byte_M_sym_s": 236.8,
+      "base9_M_sym_s": 160.9,
+      "p47_ratios": {
+        "1024": 0.132,
+        "4096": 0.152,
+        "16384": 0.159,
+        "65536": 0.174
+      },
+      "p47_best_ratio": 0.174,
+      "p47_best_R": 65536
+    },
+    "embed_weight": {
+      "n": 32768,
+      "alpha": 99,
+      "lams": [
+        0.05,
+        0.0
+      ],
+      "rows": [
+        {
+          "R": 1024,
+          "bytes": 25305.7,
+          "win_vs_static": null,
+          "M_sym_s": 37.9,
+          "roundtrip": true
+        },
+        {
+          "R": 4096,
+          "bytes": 26108.1,
+          "win_vs_static": null,
+          "M_sym_s": 44.0,
+          "roundtrip": true
+        },
+        {
+          "R": 16384,
+          "bytes": 28510.1,
+          "win_vs_static": null,
+          "M_sym_s": 62.6,
+          "roundtrip": true
+        },
+        {
+          "R": 65536,
+          "bytes": 27351.9,
+          "win_vs_static": null,
+          "M_sym_s": 68.7,
+          "roundtrip": true
+        }
+      ],
+      "byte_M_sym_s": 231.3,
+      "base9_M_sym_s": 187.5,
+      "p47_ratios": {
+        "1024": 0.164,
+        "4096": 0.19,
+        "16384": 0.271,
+        "65536": 0.297
+      },
+      "p47_best_ratio": 0.297,
+      "p47_best_R": 65536
+    }
+  },
+  "P47": {
+    "prediction": "P47",
+    "bar": 0.5,
+    "best_ratio_by_stream": {
+      "activation_site0": 0.174,
+      "embed_weight": 0.297
+    },
+    "best_ratio": 0.297,
+    "verdict": "FAIL",
+    "note": "eq30's engine: binary-search slot lookup (no per-context inverse table) + the companion in C with lazy per-context builds invalidated per refresh period R >= 1k; the cadence itself remains irrelevant (R swept)."
+  }
+}
