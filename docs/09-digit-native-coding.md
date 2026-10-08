@@ -673,3 +673,27 @@ any "nobody has done this" claim. Working hypothesis of the new ground: the
 digit-native closure runtime with exact base-9 renormalization, the base-9
 state-machine codec, the self-seeding bits-back chain on weight-table
 latents, and companion models carrying codec duty at chunk granularity.
+
+**Stage-B leftovers closed (2026-10-07, eq33 — RAN).** Two registered
+leftovers, both measured:
+  * **P38's device axis (int64 on CUDA).** The order-permutation identity
+    holds on the device: an int64 accumulation ascending vs descending vs
+    split-reversed is bit-identical (spot-checked exact against python
+    bigints). The device **wraps int64 at 2^63 exactly like the CPU**
+    (3037000500² returns −9223372036709301616): eq24's ff-product escalation
+    is required on the device too, it is not a numpy artifact. And torch has
+    **no int64 matmul on CUDA** (`addmm_cuda not implemented for 'Long'`) —
+    the exact runtime's device path needs custom kernels, as anticipated. The
+    device axis is clean for exactness, identical for overflow semantics,
+    blocked only at kernel availability.
+  * **The fp64 twin (noise vs chaos).** Running the twin semantics in fp32
+    and fp64 splits the registered guess the OTHER way: the twin's own
+    fp32-vs-fp64 spread per site is 0 / 9.5e-7 / 1.8e-4 / 1.5e-5 / 1.8e-5 /
+    2.3e-5 / 1.6e-5 / 6.0e-4 (embed → logits), while eq24's recorded
+    exact-vs-fp32 deltas at the same sites are **3–1438× larger** (the single
+    exception, res_mid at 2.1×, sits in the fp noise band). So the exact
+    track's fidelity wobble is its own DEFINED rounding — the per-layer
+    regrid — not the fp32 boundary's softness; the bounded-state discipline's
+    cost is measured and attributable. Files:
+    weights-as-equations `results/eq33_stage_b_leftovers.{json,md}`,
+    `experiments/eq33_stage_b_leftovers.py`; diary: session 23.
