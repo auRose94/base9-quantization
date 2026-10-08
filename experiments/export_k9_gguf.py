@@ -28,7 +28,14 @@ import gguf
 from gguf import GGUFValueType
 
 sys.path.insert(0, str(Path(__file__).parent))
+import k9  # noqa: E402
+import ninths_native  # noqa: E402
 from k9 import K9File, SCALE_MODES  # noqa: E402
+
+# ninths native k -> GGML type (ids provisional in the fork; upstream renumbers
+# at merge time)
+NIN_GGML_TYPE = {tname: getattr(gguf.GGMLQuantizationType, tname.upper())
+                 for tname in ninths_native.GGML_IDS}
 
 # HF module paths (k9 record names) -> llama.cpp GGUF tensor names
 _LINEAR = {
@@ -55,7 +62,8 @@ def gguf_name(name: str) -> str:
 
 
 def build_directory(records) -> bytes:
-    """k9.directory KV payload (little-endian; see the fork's src/k9.h):
+    """ninths.directory KV payload (little-endian; see the fork's src/k9.h;
+    legacy alias "k9.directory" is parsed by the fork too — k9 = shorthand):
     u16 count, then per record: u16 name_len, name, u8 rank, u32 dims[rank],
     u8 k, u8 group, u8 scale_mode, u8 perm_flag, u32 tbl/dig/sca/plen.
     The name stored is the llama.cpp GGUF tensor name (the loader keys on it)."""
@@ -80,6 +88,14 @@ def main() -> None:
     ap.add_argument("--out", required=True, type=Path, help="output GGUF")
     ap.add_argument("--materialize", default="q8_0", choices=["q8_0", "f16"],
                     help="decode-on-load destination type (default: q8_0, exact for odd grids)")
+    ap.add_argument("--native", action="store_true",
+                    help="write stage-2 native resident containers (K9_4/K9_6/K9_7) instead "
+                         "of rANS stream blobs: no directory KV, no decode-on-load; requires "
+                         "non-permuted tensors, group=64, cols %% 256 == 0")
+    ap.add_argument("--legacy-keys", action="store_true",
+                    help="write the pre-rename k9.directory/k9.materialize KV names "
+                         "(for builds from before the ninths rename, e.g. existing "
+                         "build-cuda/build-hip binaries)")
     args = ap.parse_args()
 
     reader = gguf.GGUFReader(str(args.ref))
@@ -112,12 +128,15 @@ def main() -> None:
             writer.add_key_value(field.name, field.contents(), val_type,
                                  sub_type=sub_type if val_type == GGUFValueType.ARRAY else None)
 
-        dir_bytes = build_directory(records)
-        # plain list: gguf-py's array packing requires an abc.Sequence
-        # (ndarray does not qualify) and the directory is only a few KiB
-        writer.add_key_value("k9.directory", list(np.frombuffer(dir_bytes, dtype=np.uint8)),
-                             GGUFValueType.ARRAY, sub_type=GGUFValueType.UINT8)
-        writer.add_key_value("k9.materialize", args.materialize, GGUFValueType.STRING)
+        if not args.native:
+            dir_bytes = build_directory(records)
+            # plain list: gguf-py's array packing requires an abc.Sequence
+            # (ndarray does not qualify) and the directory is only a few KiB
+            kv_dir = "k9.directory" if args.legacy_keys else "ninths.directory"
+            kv_mat = "k9.materialize" if args.legacy_keys else "ninths.materialize"
+            writer.add_key_value(kv_dir, list(np.frombuffer(dir_bytes, dtype=np.uint8)),
+                                 GGUFValueType.ARRAY, sub_type=GGUFValueType.UINT8)
+            writer.add_key_value(kv_mat, args.materialize, GGUFValueType.STRING)
 
         total_bytes = 0
         copy_list = []      # (name, data) from the reference, in order
@@ -127,18 +146,41 @@ def main() -> None:
             writer.add_tensor_info(t.name, t.data.shape, t.data.dtype, t.data.nbytes)
             copy_list.append(t.data)
             total_bytes += t.data.nbytes
+        per_type = {}
         for m in records:
             gname = gguf_name(m["name"])
             rec = k9f.record(m["name"])
-            payload = bytes(rec["freq"]) + bytes(rec["digits"]) + bytes(rec["scales"]) \
-                + (bytes(rec["perm"]) if rec["perm"] else b"")
-            assert len(payload) == m["tbl"] + m["dig"] + m["sca"] + m["plen"]
-            del rec
-            payload = np.frombuffer(payload, dtype=np.uint8)
-            writer.add_tensor_info(gname, payload.shape, payload.dtype, payload.nbytes,
-                                   raw_dtype=gguf.GGMLQuantizationType.K9)
-            copy_list.append(payload)
-            total_bytes += payload.nbytes
+            r, c = m["shape"]
+            if args.native:
+                if rec["perm"] is not None:
+                    raise SystemExit(f"native export requires non-permuted (RTN) tensors; "
+                                     f"{m['name']} carries a GPTQ act-order permutation "
+                                     f"(use stream mode or re-quantize)")
+                if m["group"] != 64:
+                    raise SystemExit(f"native export pins group=64; {m['name']} uses group={m['group']}")
+                tname = ninths_native.type_for_k(m["k"])
+                digits = k9.decode_digits(rec).reshape(r, c)
+                mvals = k9.decode_scales(rec["scales"], rec["scale_mode"],
+                                         r * (c // 64))
+                packed = ninths_native.pack(digits, m["k"], mvals)
+                del digits, rec
+                tid = NIN_GGML_TYPE[tname]
+                # gguf-py stores dims reversed (numpy-style (rows, cols) in, ne[0] last
+                # written first): pass (r, c) so llama.cpp sees ne = (c, r) = (in, out)
+                writer.add_tensor_info(gname, (r, c), np.int8, packed.nbytes, raw_dtype=tid)
+                copy_list.append(np.frombuffer(packed, dtype=np.uint8))
+                per_type[tname] = per_type.get(tname, 0) + packed.nbytes
+                total_bytes += packed.nbytes
+            else:
+                payload = bytes(rec["freq"]) + bytes(rec["digits"]) + bytes(rec["scales"]) \
+                    + (bytes(rec["perm"]) if rec["perm"] else b"")
+                assert len(payload) == m["tbl"] + m["dig"] + m["sca"] + m["plen"]
+                del rec
+                payload = np.frombuffer(payload, dtype=np.uint8)
+                writer.add_tensor_info(gname, payload.shape, payload.dtype, payload.nbytes,
+                                       raw_dtype=gguf.GGMLQuantizationType.K9)
+                copy_list.append(payload)
+                total_bytes += payload.nbytes
 
         writer.write_header_to_file()
         writer.write_kv_data_to_file()
@@ -146,6 +188,9 @@ def main() -> None:
         for item in copy_list:
             writer.write_tensor_data(item)
         print(f"wrote {args.out}: {total_bytes / 2**30:.2f} GiB payload")
+        if args.native:
+            for tname, nb in sorted(per_type.items()):
+                print(f"  {tname}: {nb / 2**30:.3f} GiB")
 
     writer.close()
 

@@ -46,3 +46,7 @@ results/kld/
 .zcode/
 .venv-rocm/
 results/wiki2_raw_*.txt
+
+# fpga gate-0 sim artifacts
+fpga/sim_build/
+fpga/sim/sim_build/

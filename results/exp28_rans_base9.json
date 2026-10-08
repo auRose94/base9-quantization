@@ -1,0 +1,516 @@
+{
+  "rate_rows": [
+    {
+      "stream": "eq9_QAT_k9emb99.k9:tok_embeddings.weight",
+      "n": 32768,
+      "rate_byte": 6.15356,
+      "rate_b9": 6.15625,
+      "emit_per_sym": 1.9406
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.attention.wq.weight",
+      "n": 4096,
+      "rate_byte": 2.73828,
+      "rate_b9": 2.73633,
+      "emit_per_sym": 0.8589
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.attention.wk.weight",
+      "n": 2048,
+      "rate_byte": 2.85938,
+      "rate_b9": 2.85938,
+      "emit_per_sym": 0.8931
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.attention.wv.weight",
+      "n": 2048,
+      "rate_byte": 2.63281,
+      "rate_b9": 2.62891,
+      "emit_per_sym": 0.8203
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.attention.wo.weight",
+      "n": 4096,
+      "rate_byte": 2.70312,
+      "rate_b9": 2.70312,
+      "emit_per_sym": 0.8481
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.feed_forward.w1.weight",
+      "n": 11008,
+      "rate_byte": 2.7391,
+      "rate_b9": 2.73983,
+      "emit_per_sym": 0.8623
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.feed_forward.w2.weight",
+      "n": 12288,
+      "rate_byte": 2.63932,
+      "rate_b9": 2.63997,
+      "emit_per_sym": 0.8311
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.0.feed_forward.w3.weight",
+      "n": 11008,
+      "rate_byte": 2.73183,
+      "rate_b9": 2.73256,
+      "emit_per_sym": 0.86
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.attention.wq.weight",
+      "n": 4096,
+      "rate_byte": 2.76562,
+      "rate_b9": 2.76562,
+      "emit_per_sym": 0.8679
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.attention.wk.weight",
+      "n": 2048,
+      "rate_byte": 2.85547,
+      "rate_b9": 2.85156,
+      "emit_per_sym": 0.8916
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.attention.wv.weight",
+      "n": 2048,
+      "rate_byte": 2.66016,
+      "rate_b9": 2.65625,
+      "emit_per_sym": 0.8296
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.attention.wo.weight",
+      "n": 4096,
+      "rate_byte": 2.69922,
+      "rate_b9": 2.69727,
+      "emit_per_sym": 0.8467
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.feed_forward.w1.weight",
+      "n": 11008,
+      "rate_byte": 2.72602,
+      "rate_b9": 2.72602,
+      "emit_per_sym": 0.8581
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.feed_forward.w2.weight",
+      "n": 12288,
+      "rate_byte": 2.64323,
+      "rate_b9": 2.64388,
+      "emit_per_sym": 0.8324
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.1.feed_forward.w3.weight",
+      "n": 11008,
+      "rate_byte": 2.72965,
+      "rate_b9": 2.73038,
+      "emit_per_sym": 0.8595
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.attention.wq.weight",
+      "n": 4096,
+      "rate_byte": 2.75781,
+      "rate_b9": 2.75586,
+      "emit_per_sym": 0.865
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.attention.wk.weight",
+      "n": 2048,
+      "rate_byte": 2.85938,
+      "rate_b9": 2.85547,
+      "emit_per_sym": 0.8926
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.attention.wv.weight",
+      "n": 2048,
+      "rate_byte": 2.67188,
+      "rate_b9": 2.66797,
+      "emit_per_sym": 0.833
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.attention.wo.weight",
+      "n": 4096,
+      "rate_byte": 2.66016,
+      "rate_b9": 2.66016,
+      "emit_per_sym": 0.8345
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.feed_forward.w1.weight",
+      "n": 11008,
+      "rate_byte": 2.71366,
+      "rate_b9": 2.71439,
+      "emit_per_sym": 0.8543
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.feed_forward.w2.weight",
+      "n": 12288,
+      "rate_byte": 2.62174,
+      "rate_b9": 2.6224,
+      "emit_per_sym": 0.8255
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.2.feed_forward.w3.weight",
+      "n": 11008,
+      "rate_byte": 2.72965,
+      "rate_b9": 2.73038,
+      "emit_per_sym": 0.8594
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.attention.wq.weight",
+      "n": 4096,
+      "rate_byte": 2.78516,
+      "rate_b9": 2.7832,
+      "emit_per_sym": 0.8735
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.attention.wk.weight",
+      "n": 2048,
+      "rate_byte": 2.86719,
+      "rate_b9": 2.86328,
+      "emit_per_sym": 0.895
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.attention.wv.weight",
+      "n": 2048,
+      "rate_byte": 2.62891,
+      "rate_b9": 2.625,
+      "emit_per_sym": 0.8198
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.attention.wo.weight",
+      "n": 4096,
+      "rate_byte": 2.625,
+      "rate_b9": 2.625,
+      "emit_per_sym": 0.8235
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.feed_forward.w1.weight",
+      "n": 11008,
+      "rate_byte": 2.73401,
+      "rate_b9": 2.73474,
+      "emit_per_sym": 0.8608
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.feed_forward.w2.weight",
+      "n": 12288,
+      "rate_byte": 2.62891,
+      "rate_b9": 2.62891,
+      "emit_per_sym": 0.8276
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.3.feed_forward.w3.weight",
+      "n": 11008,
+      "rate_byte": 2.72384,
+      "rate_b9": 2.72384,
+      "emit_per_sym": 0.8574
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.attention.wq.weight",
+      "n": 4096,
+      "rate_byte": 2.76758,
+      "rate_b9": 2.76758,
+      "emit_per_sym": 0.8684
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.attention.wk.weight",
+      "n": 2048,
+      "rate_byte": 2.78125,
+      "rate_b9": 2.77734,
+      "emit_per_sym": 0.8682
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.attention.wv.weight",
+      "n": 2048,
+      "rate_byte": 2.64844,
+      "rate_b9": 2.64062,
+      "emit_per_sym": 0.8252
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.attention.wo.weight",
+      "n": 4096,
+      "rate_byte": 2.63672,
+      "rate_b9": 2.63672,
+      "emit_per_sym": 0.8271
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.feed_forward.w1.weight",
+      "n": 11008,
+      "rate_byte": 2.7202,
+      "rate_b9": 2.72093,
+      "emit_per_sym": 0.8564
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.feed_forward.w2.weight",
+      "n": 12288,
+      "rate_byte": 2.64258,
+      "rate_b9": 2.64323,
+      "emit_per_sym": 0.832
+    },
+    {
+      "stream": "eq9_QAT_k9emb99.k9:layers.4.feed_forward.w3.weight",
+      "n": 11008,
+      "rate_byte": 2.75145,
+      "rate_b9": 2.75218,
+      "emit_per_sym": 0.8663
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:wte",
+      "n": 38597376,
+      "rate_byte": 6.27381,
+      "rate_b9": 6.27691,
+      "emit_per_sym": 1.9791
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:wpe",
+      "n": 1572864,
+      "rate_byte": 6.21754,
+      "rate_b9": 6.22077,
+      "emit_per_sym": 1.9614
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L0.q",
+      "n": 589824,
+      "rate_byte": 2.69954,
+      "rate_b9": 2.70095,
+      "emit_per_sym": 0.8516
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L0.k",
+      "n": 589824,
+      "rate_byte": 2.70443,
+      "rate_b9": 2.70584,
+      "emit_per_sym": 0.8531
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L0.v",
+      "n": 589824,
+      "rate_byte": 2.67026,
+      "rate_b9": 2.67166,
+      "emit_per_sym": 0.8423
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L0.out",
+      "n": 589824,
+      "rate_byte": 2.70405,
+      "rate_b9": 2.70546,
+      "emit_per_sym": 0.853
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L0.cfc",
+      "n": 2359296,
+      "rate_byte": 2.70551,
+      "rate_b9": 2.70693,
+      "emit_per_sym": 0.8535
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L0.cproj",
+      "n": 2359296,
+      "rate_byte": 2.69354,
+      "rate_b9": 2.69495,
+      "emit_per_sym": 0.8497
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L1.q",
+      "n": 589824,
+      "rate_byte": 2.70513,
+      "rate_b9": 2.70654,
+      "emit_per_sym": 0.8533
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L1.k",
+      "n": 589824,
+      "rate_byte": 2.65487,
+      "rate_b9": 2.65625,
+      "emit_per_sym": 0.8375
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L1.v",
+      "n": 589824,
+      "rate_byte": 2.6834,
+      "rate_b9": 2.68481,
+      "emit_per_sym": 0.8465
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L1.out",
+      "n": 589824,
+      "rate_byte": 2.70573,
+      "rate_b9": 2.70714,
+      "emit_per_sym": 0.8535
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L1.cfc",
+      "n": 2359296,
+      "rate_byte": 2.71173,
+      "rate_b9": 2.71316,
+      "emit_per_sym": 0.8554
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L1.cproj",
+      "n": 2359296,
+      "rate_byte": 2.70445,
+      "rate_b9": 2.70588,
+      "emit_per_sym": 0.8532
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L2.q",
+      "n": 589824,
+      "rate_byte": 2.70938,
+      "rate_b9": 2.7108,
+      "emit_per_sym": 0.8547
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L2.k",
+      "n": 589824,
+      "rate_byte": 2.65845,
+      "rate_b9": 2.65983,
+      "emit_per_sym": 0.8386
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L2.v",
+      "n": 589824,
+      "rate_byte": 2.68925,
+      "rate_b9": 2.69065,
+      "emit_per_sym": 0.8483
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L2.out",
+      "n": 589824,
+      "rate_byte": 2.71114,
+      "rate_b9": 2.71257,
+      "emit_per_sym": 0.8552
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L2.cfc",
+      "n": 2359296,
+      "rate_byte": 2.71348,
+      "rate_b9": 2.7149,
+      "emit_per_sym": 0.856
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L2.cproj",
+      "n": 2359296,
+      "rate_byte": 2.71384,
+      "rate_b9": 2.71527,
+      "emit_per_sym": 0.8561
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L3.q",
+      "n": 589824,
+      "rate_byte": 2.71346,
+      "rate_b9": 2.71487,
+      "emit_per_sym": 0.856
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L3.k",
+      "n": 589824,
+      "rate_byte": 2.65979,
+      "rate_b9": 2.66117,
+      "emit_per_sym": 0.839
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L3.v",
+      "n": 589824,
+      "rate_byte": 2.68754,
+      "rate_b9": 2.68894,
+      "emit_per_sym": 0.8478
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L3.out",
+      "n": 589824,
+      "rate_byte": 2.70303,
+      "rate_b9": 2.70444,
+      "emit_per_sym": 0.8527
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L3.cfc",
+      "n": 2359296,
+      "rate_byte": 2.71208,
+      "rate_b9": 2.71351,
+      "emit_per_sym": 0.8556
+    },
+    {
+      "stream": "eq13_s4000_lr1e4.k9:L3.cproj",
+      "n": 2359296,
+      "rate_byte": 2.69836,
+      "rate_b9": 2.69978,
+      "emit_per_sym": 0.8512
+    },
+    {
+      "stream": "synth:iid9",
+      "n": 2000000,
+      "rate_byte": 3.16995,
+      "rate_b9": 3.17162,
+      "emit_per_sym": 1.0
+    },
+    {
+      "stream": "synth:skewed100:1",
+      "n": 2000000,
+      "rate_byte": 0.11028,
+      "rate_b9": 0.11033,
+      "emit_per_sym": 0.0348
+    },
+    {
+      "stream": "synth:constant",
+      "n": 1000000,
+      "rate_byte": 6e-05,
+      "rate_b9": 5e-05,
+      "emit_per_sym": 0.0
+    },
+    {
+      "stream": "synth:rare-f1",
+      "n": 1000000,
+      "rate_byte": 6e-05,
+      "rate_b9": 5e-05,
+      "emit_per_sym": 0.0
+    }
+  ],
+  "P41": {
+    "prediction": "P41",
+    "max_delta_b_per_digit": 0.00323,
+    "bar": 0.01,
+    "verdict": "PASS"
+  },
+  "P42": {
+    "prediction": "P42",
+    "slowdown_enc": 1.54,
+    "slowdown_dec": 1.11,
+    "bar": 2.0,
+    "verdict": "PASS"
+  },
+  "P43": {
+    "prediction": "P43",
+    "symbols": 1000000000,
+    "mismatches": 0,
+    "sym_s": 99.9,
+    "verdict": "PASS"
+  },
+  "thr": {
+    "real33m:byte": {
+      "enc_sym_s": 299.6,
+      "dec_sym_s": 194.9
+    },
+    "real33m:b9": {
+      "enc_sym_s": 190.3,
+      "dec_sym_s": 159.2
+    },
+    "iid9:byte": {
+      "enc_sym_s": 375.0,
+      "dec_sym_s": 223.3
+    },
+    "iid9:b9": {
+      "enc_sym_s": 243.7,
+      "dec_sym_s": 201.4
+    }
+  },
+  "abl": {
+    "9^4": 2.73983,
+    "9^5": 2.73983,
+    "9^6": 2.73983
+  },
+  "parity_fail": 0,
+  "rt_fail": 0,
+  "op_census": {
+    "renorm_emit_ops": "x % 9, x //= 9 (base-9 digit ops)",
+    "byte_coder_ops": "x & 0xFF, x >>= 8",
+    "symbol_slot": "x % 9^4 = low 4 base-9 digits of state"
+  }
+}

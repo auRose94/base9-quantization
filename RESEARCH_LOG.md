@@ -6,7 +6,70 @@ honest.
 
 ---
 
-## 2026-10-06, session 25 — C++ corpus extension, the GD+C++ 14B mix, and the ops/split lessons
+## 2026-10-07, session 26 — docs/09 digit-native coding: the base-9 codec exists (RQ11), and the grid can be the runtime (RQ10 stage A) and its own output channel (RQ9)
+
+New thread opened this session with Rose: `docs/09-digit-native-coding.md` —
+the third leg after train-as-digits / store-as-digits is **run as digits**:
+RQ10 (exact-grid runtime), RQ11 (the base-9 codec: "decode and encode on the
+grid"), RQ9 (generation as decompression), RQ12 (bits-back self-seeding),
+RQ13 (companion models for codec duty). All first-pass experiments this
+session were CPU-class by design — the GPUs stayed with the in-flight runs;
+nothing here touches the K9Q1 format.
+
+**exp28 — the base-9 codec: P41/P42/P43 all PASS (`experiments/exp28_rans_base9.py/.c`).**
+rANS generalized to renormalize IN BASE 9: frequency table M = 9⁴ = 6561
+(per-symbol values sum exactly to a power of 9), state invariant x ∈ [9¹², 9¹³)
+(u64-safe), renormalization emits base-9 digits (x % 9, x /= 9 — every renorm
+op is a grid digit op), symbol slot = x % M = the low 4 base-9 digits of the
+state — **symbol lookup is digit inspection**. Encode/decode are the same one
+state-update op run in opposite directions, exact inverses (exp21's 1.54 B
+round-trip property, now on the grid). C core (`exp28_rans_base9.c`) is
+output-identical to the Python reference (the rans_fast house bar).
+
+- **P41 PASS** — rate parity vs the byte coder on 62 real digit streams
+  (260K QAT + 33M QAT artifacts, including k99 embedding streams at
+  6.27 b/digit): worst delta **+0.0032 b/digit** (bar 0.01); adversarial
+  streams (constant, f=1-rare, skewed 100:1, max-entropy iid9 at exactly
+  1.000 emit/symbol) all round-trip. M ablation {9⁴, 9⁵, 9⁶} rate-identical:
+  frequency-table granularity doesn't pay at these entropies (exp15's
+  EC-SQ lesson re-confirmed for the coder core).
+- **P42 PASS** — throughput 190/159 M sym/s (enc/dec on 33M-real digits) vs
+  byte coder 300/195 = **1.1–1.6×, inside the 2× bar**. The FIRST design
+  (M = 9⁶) FAILED P42 at 2.3× decode: the 2.1 MB inverse-lookup table fell
+  out of cache (the byte coder's M=2¹² table is 16 KB). **M is a cache knob
+  as much as a granularity knob** — the codec's constants are chosen by
+  cache, not arithmetic.
+- **P43 PASS** — **10⁹ symbols, 0 mismatches**; container packing 169 digits
+  → 67 bytes (9¹⁶⁹ < 2⁵³⁶; 0.285 bits/block) pack/unpack-asserted. The
+  output stream is now base-9 end to end: digits in, digit stream out, no
+  byte-granularity discretization anywhere.
+
+Cross-repo first pass (weights-as-equations, eq14/eq15 — full details in its
+log): **eq14 closure census (RQ10 stage A): P37-census PASS** — worst
+per-layer exact-accumulate span **11.2–14.2 base-9 digits** across eq5 RTN
+A/C and eq9 QAT k9/k27 subjects at n_act ∈ {1,2,3} (bar 20; u128 = 40.4
+digits — bignum refuted for this artifact class); residual-stream spread
+p99 FLAT at ~4.4–4.5 digits across all 5 layers (**no compounding** — the
+exact runtime's precision budget is per-layer constant, not depth-growing).
+**eq15 decode-synchrony (RQ9): P34/P35/P36 all PASS** — 1500-token scripted
+story = **264 bytes** (1.408 b/tok, coder overhead +0.011 nats/token vs
+masked CE); regeneration ×2 bit-exact; single-bit flip diverges at token
+747; rate dial monotone over τ ∈ [0.1, 50]: 0.10 → 8.95 b/tok (log2 512 = 9
+at τ→∞ ✓; the τ→0.1 residual is the artifact's own near-tie entropy, not
+coder waste).
+
+**Data-integrity flag found while loading artifacts:** eq9/eq12/eq13 `.k9`
+artifacts persist only the 2-D grid tensors — the trained 1-D norm weights
+were never written to disk (reload identity ≤ 5e-5 was verified in-memory at
+run time, not from the saved file); any future out-of-repo reload of those
+artifacts must rebuild norms from the source checkpoint and accept that the
+trained-norm component is unrecoverable. Suggested fix when the arms finish:
+re-write the artifacts with norms included (a `K9Q1` "rest" blob is the
+natural home).
+
+Next: RQ10 stage B (the exact runtime: P37/38/39/40) needs a GPU slot;
+RQ13 companions ride exp28's state machine (they emit M = 9^n tables);
+docs/02-convention web novelty pass before any novelty claim.
 
 **C++ extension of the Godot-4 coder phase.** A g++-based verifier
 (`phase2/cpp_verify.py`, selftest 7/7) with phase 2's three-way verdict
@@ -1604,3 +1667,29 @@ RQ2 real-model PTQ + perplexity vs bits (the claim that matters), RQ3
 learned 9-level codebooks vs uniform ninths at matched bits, RQ5 a real
 rANS-on-base-9 codec artifact (GGUF-style K9), RQ4 structure scan of a real
 checkpoint's digit stream.
+## 2026-10-07, session 27 (cont.) — docs/09 RQ10 stage B: substituted semantics and the exact runtime (cross-repo, wae eq16/eq17)
+
+Stage B of the digit-native thread ran cross-repo (the model class and
+artifacts live in weights-as-equations); full entries in both logs. Headline
+verdicts: **P40 PASS** (activation digit streams are context-carrying —
+order-1 Markov gain 7.4% vs the exp12 weight-digit null's 0.0-0.2%: a 40×
+gap, the digit-native memory premise confirmed), **P38 PASS** (the exact
+integer runtime is accumulation-order-exact end to end: permutation-invariant
+bit-identical logits + width tracks), **P37 FAIL-as-registered with the
+regime table** (pure-exact state needs ~43-237 base-9 digits at the logits
+depending on the constants' precision — fp32-exact constants: ~+27 b/layer;
+uniform-power grid-rounded constants (6/10-bit): ~43/55 digits; the ≤20-digit
+bar is unreachable for a full transformer, and u128 is just missed even in
+the tightest measured regime — the compliant bounded form remains the census's
+regrid-per-layer design at 11.2-14.2 digits, which pays a defined per-layer
+rounding), **P39 FAIL post-hoc, mechanism identified** (the k27 weights were
+trained with exp-softmax/RMS/silu geometry; the rational substitutions misread
+it post-hoc: norm +4.4% with λ-calibration, attention +23-50% by kernel,
+silu +5.7%, joint +210-238% — the exp11 ternary lesson transfers;
+**P39d registered: substitution-aware QAT**).
+
+Two transferable implementation lessons: `relu(−inf)=0` erases masks inside
+softmax(log1p(relu(·))) forms (explicit mask required); and the constants'
+digit width — scales AND norm weights AND calibrations — is the dominant
+lever on any exact runtime's state growth (the K9 lesson extended from
+storage to compute).

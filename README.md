@@ -12,6 +12,13 @@ tested synthetically and on TinyStories-33M (2026-10-03); it now has real
 the log), and a Phase-2 Godot-4 coder fine-tune built on top of the format
 (2026-10-04/05). Running log: `RESEARCH_LOG.md`.
 
+**Naming (2026-10-06):** the format is **ninths** (primary name in prose and
+docs); **K9** is the secondary shorthand — and the GGML type prefix of the
+native resident containers that stage 2 lands (`K9_4`/`K9_6`/`K9_7`) — and
+`.k9` stays the filename extension of the entropy-coded (rANS) research
+container. In the llama.cpp fork the loader KV is `ninths.directory` (the
+legacy `k9.directory` spelling still loads).
+
 One-line pitch: a repeating-radix weight grid that lets entropy coding slide
 between the power-of-two quantizations to win quality-per-byte — proven
 end-to-end from the number theory to a bit-exact llama.cpp runtime, and
@@ -531,3 +538,51 @@ transformation of Apache-2.0 source, so the licence permits it either way.
 ## License
 
 MIT — see `LICENSE`.
+---
+
+## Credits and acknowledgements
+
+The thanks here are not a formality — this work is built on other people's
+research:
+
+- **Jarek Duda** created **rANS** (range Asymmetric Numeral Systems) and
+  released it **patent-free**. The K9 codec, the base-9 state machine, the
+  C coders, and every context-conditioned engine in this repository are his
+  algorithm. A patent-free entropy coder is what makes an unencumbered
+  implementation of this work possible at all. Thank you.
+- **Geoffrey Hinton & Drew van Camp (1993)** for bits-back coding;
+  **James Townsend, Tom Bird & Julius Kunze (ICLR 2019)** for bb-ANS
+  ([arXiv:1901.04866](https://arxiv.org/abs/1901.04866)), including their
+  reference implementation used to cross-check this work's digit-native chain.
+- **Krichevsky & Trofimov**, **Witten & Bell**, **Jelinek & Mercer**,
+  **Lloyd & Max** — the priors, smoothing, and fitted-codebook results the
+  companion experiments rest on.
+- **Elias Frantar and colleagues** for **GPTQ**; **Johannes Ballé, David
+  Minnen and colleagues** for the learned-compression context-model
+  architecture; **Andrej Karpathy** for llama2.c and the stories260K model;
+  **Ronen Eldan** for TinyStories and TinyStories-33M; **Qwen / Alibaba
+  Cloud** for the Qwen2.5 models; and **Georgi Gerganov and the llama.cpp
+  contributors** for the inference stack behind the k9/GGUF gates.
+
+The related project — weights-as-equations, the digit-native runtime and its
+companion experiments (RQ9–RQ13 in `docs/09`) — lives at
+[auRose94/base9-quantization @ `weights-as-equations`](https://github.com/auRose94/base9-quantization/tree/weights-as-equations);
+its README carries the fuller credits section and the author's note.
+
+## How this was made — an AI-assisted research project
+
+This research was done by **Rosemary Mercury** with an **AI assistant —
+glm/deepseek running inside ZCode**. The assistant wrote and ran the
+experiments, measured and logged the results, and drafted the diary entries;
+the ideas, priorities, pre-registrations, and review came from the author.
+Predictions are pre-registered in `RESEARCH_LOG.md` and `docs/` before they
+are tested, and failures are logged as findings rather than removed.
+
+> "I only had an idea and my credit isn't important... It's not a waste, for
+> now it proves a lot. It just comes at a severe cost to make data more
+> packed, and it's not a silver bullet for optimization but a packing
+> decision." — the author, in her own words (full note in the
+> weights-as-equations README)
+
+Nothing here is a pull request against anyone's project; it is published so
+that whoever wants to pick it up can.
