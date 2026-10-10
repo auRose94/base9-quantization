@@ -36,18 +36,33 @@ cheap streaming decode pipeline is a real serving path.
 - [x] Synth-safe RTL: package calls qualified (`f32_pkg::`), the f32_add
       renormalization while-loop rewritten as a bounded MSB scan (bit-identical,
       gate re-verified).
-- [x] `gate0_top.sv` (silicon gate) **passes full simulation** (`sim/tb_gate0.py`):
-      "G0 PASS" + LED pattern + UART protocol all verified.
+- [x] `gate0_top.sv` (V1 silicon gate) passes full simulation, incl. the
+      three pre-silicon catches (shift direction, per-case chain reset,
+      done_flag) — kept as the sim-shape reference for tb_k96.
+- [x] **V2 streaming kernel `rtl/k96_vec_dot_v2.sv`** (session 28 cont.):
+      byte-streamed consumption from scratch memories (FETCH/SETTLE/MACS
+      3-cycle byte steps; scale service port with pre-registered d0/d1; same
+      fp ops/op order as V1). Validated by `sim/tb_gate0.py` end to end:
+      **G0 PASS, 21/21 records, plus a full 128-step bus trace byte-identical
+      to the C consumption schedule** (`wm`/`am` scratch + per-cycle wdata/
+      adata/sdata). `gate0v2_top.sv` = BRAM load -> scratch -> kernel ->
+      chain/compare -> LEDs/UART (verdict repeats every ~5.5 ms with elapsed
+      cycles in hex).
+- [x] **PnR FITS**: V2 = 6618 LUT4-eq (31% vs V1's failing 14914/71%), 11
+      BSRAM, post-route Fmax 28.33 MHz at the 27 MHz target. Packed and
+      **flashed to the board** via the Sipeed FT2232 pod — the gate design
+      runs on silicon; LEDs carry the verdict.
 - [x] Board bring-up: JTAG load via Sipeed USB Debugger pod (FT2232) works;
       bits stream to the device (load verified 100%).
-- [ ] **PnR**: full gate top fails legal placement at 14914 LUT4-equiv (71%).
-      V1's parallel-port byte muxes are the whale. Next: V2 streaming kernel
-      (byte-serial wblk/act consumption — all indices are sequential:
-      lb = wblk byte 8+t, hh byte per two t, act blocks contiguous), which
-      removes both the big muxes and the 1600/2176-bit shift registers.
-      k96 datapath alone PnR'd fine (Fmax 30.9 MHz @ 27 MHz target).
 - [ ] UART-visible verdict on the board (needs the board's own USB-C plugged
-      in for the BL616 ttyACM, or 69/70 wired to the external pod's CH-B).
+      in for the BL616 ttyACM, or 69/70 wired to the external pod's CH-B;
+      an EXPAND "tx fan" shotgun was tried and abandoned — several header
+      pins are vendor-reserved, and the wiring position is unknown anyway).
+- [ ] Next rungs: K9_7/K9_4 V2 kernels (same skeleton, C harness already
+      validates them); fetch/compute overlap (double-buffer scratch) and a
+      2-deep skid buffer to hold the ~1.9-byte-step/cycle headroom; then the
+      SDRAM streaming stage — real ninths tensor bytes streaming through the
+      datapath (the streamed-model ladder's first rung on this board).
 
 ## Board notes (Tang Nano 20K)
 

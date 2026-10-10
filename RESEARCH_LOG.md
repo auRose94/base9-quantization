@@ -1742,3 +1742,44 @@ is LEDs only (PASS = five LEDs on with led[4] off; running = heartbeat walk);
 beacon bitstream left loaded on the board. On-chip evidence is the tb_gate0
 silico-pass until a UART-visible path exists (plug board USB-C for ttyACM, or
 wire 69/70 to the pod's CH-B pair).
+## 2026-10-10, session 28 (cont.) — V2 streaming kernel: G0 PASS in sim and PnR-green; flashed to the board
+
+Continued the same session with the V2 rework the PnR blocker called for.
+**`k96_vec_dot_v2` (byte-streamed kernel): simulation-verified end to end
+(`G0 PASS`, 21/21 records) and fits GW2A-18 PnR (6618 LUT4-eq = 31% vs V1's
+failing 14914 / 71%; 11 BSRAM; post-route 28.33 MHz at 27 target) — packed
+and flashed; the gate design now runs on the Tang Nano 20K.**
+
+The V2 shape consumes wblk/act bytes from small scratch memories in exact
+C-consumption order instead of V1's wide parallel ports (which synthesized to
+~15k LUT of byte muxes): FETCH issues byte addresses, SETTLE samples the sync
+read, MACS consumes — a 3-cycle byte step; group/block scales ride a
+separate combinational service port (pre-registered at scratch-load), so no
+fp-boundary cycle ever flushes a stream pipeline. The fp ops and op order are
+unchanged from V1 (bit-exactness contract intact — V1/tb_k96 remains the
+semantic reference and stays green).
+
+**Debugging yield was unusually high; the tb instrumentation deserves the
+credit**: byte-diff on the scratch memories vs stimulus (caught an inverted
+shift pair in V1, a load-tail slot skip in V2), per-comparison partial/exp
+tables vs the npz artifacts (caught V1's missing per-case chain reset), and a
+per-cycle bus trace of the first superblock checked against the C schedule —
+which localized a 3-bug cluster in the address scheduling: (1) byte-select
+muxes must capture the select bits *with* the word (they were reading the
+live address while the word register held the previous one), (2) a 2-step
+read lead is structurally wrong with a 1-deep resampling pipe (the fresh
+issue destroys the in-flight byte exactly at fp boundaries — after two wrong
+fixes the honest resolution was the 3-cycle FETCH/SETTLE/MACS loop, deferring
+fetch overlap to the skid-buffer note), (3) the load loop's tail slot
+(cp_cnt == 118) was stolen by the transition branch. Each was found by the
+trace, not by eyeballing.
+
+Throughput ledger (first silicon datapoint, single lane, all at 27 MHz):
+sb = 397 compute + 119 load cycles → ~52k superblocks/s → 13.3 M codes/s ≈
+10.4 MB/s of packed k63 container. Known levers before SDRAM is the
+bottleneck: fetch/compute overlap (118 vs 397 → max()), and the skid buffer
+per stream (2-deep) to hold 1 code/cycle. The Tang's in-package SDRAM is
+hundreds of MB/s, so the datapath is *not yet* the binding constraint —
+which is the correct stage order: the next rung IS the SDRAM streaming stage
+(a real ninths tensor tiled through the datapath, bit-exact vs the C
+materializer), then K9_7/K9_4 kernels.
