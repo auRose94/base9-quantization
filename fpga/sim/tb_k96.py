@@ -71,14 +71,15 @@ async def gate(dut):
 
     n_fail = 0
     recs = []
-    for name, wblks, acts in cases:
+    for cidx, (name, wblks, acts) in enumerate(cases):
         cums_g, final_g = k96_partials(wblks, acts)
         acc_rtl = b32f(0)
         line = []
         for i, wb in enumerate(wblks):
             got = await run_sb(dut, wb, acts[8 * i : 8 * i + 8])
             want = cums_g[i]  # cumulative fp32 sumf after this superblock (C state)
-            recs.append({"wblk": np.frombuffer(wb, np.uint8),
+            recs.append({"case": cidx,
+                         "wblk": np.frombuffer(wb, np.uint8),
                          "act": np.frombuffer(b"".join(acts[8 * i : 8 * i + 8]), np.uint8),
                          "rtl": got, "gold": want})
             # C chains partials with sequential fp32 adds; RTL returns per-sb sums

@@ -162,7 +162,8 @@ package f32_pkg;
           else              mag = '0;
           canceled = (mag == '0);
           if (!canceled) begin
-            p = 47; while (p > 0 && !mag[p]) p--;
+            p = 0;                          // index of the highest set bit (MSB scan)
+            for (int i = 47; i >= 0; i--) if (mag[i] && p == 0) p = i;
             sh = 47 - p;
             mag = mag << sh;               // vacated bits are exact zeros
             er = int'(e_big) - sh;

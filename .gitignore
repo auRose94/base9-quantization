@@ -50,3 +50,13 @@ results/wiki2_raw_*.txt
 # fpga gate-0 sim artifacts
 fpga/sim_build/
 fpga/sim/sim_build/
+
+# fpga synth build artifacts (regenerable via fpga/synth/build.sh + gen_mem.py)
+fpga/synth/*.json
+fpga/synth/*.log
+fpga/synth/*.fs
+fpga/synth/stim.hex
+fpga/synth/exp.hex
+fpga/synth/flags.hex
+fpga/synth/results.xml
+fpga/crosscheck/k9_c_harness

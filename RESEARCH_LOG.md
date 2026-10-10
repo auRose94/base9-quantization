@@ -1693,3 +1693,52 @@ softmax(log1p(relu(·))) forms (explicit mask required); and the constants'
 digit width — scales AND norm weights AND calibrations — is the dominant
 lever on any exact runtime's state growth (the K9 lesson extended from
 storage to compute).
+## 2026-10-10, session 28 — FPGA Gate-1: RTL↔C closed, on-chip gate passes in simulation, GW2A-18 area blocker identified
+
+Hardware landed (Tang Nano 20K, GW2AR-LV18QN88C8/I7). Three results this
+session, all under `fpga/`:
+
+**RTL↔C cross-check CLOSED** (`fpga/crosscheck/`): the fork's actual kernels
+(`ggml_vec_dot_k9_{4,6,7}_q8_0_generic`, verbatim from `~/Work/llama.cpp`
+branch k9, compiled `-O2 -ffp-contract=off` — the load-bearing flag) are
+bit-identical to the numpy golden model over the exact cocotb Gate-0 stimulus
+(21 superblocks, all 8 cases incl. fp16 inf/zero/subnormal scales, chained
+partials, -inf products). Chain of identities now has zero gaps: RTL ==
+numpy == real C, byte-for-byte, on the same stimulus. The harness also takes
+k9_4/k9_7 inputs, ready for their RTL.
+
+**The on-chip gate design passes simulation** (`fpga/synth/gate0_top.sv`,
+validated by `fpga/sim/tb_gate0.py` in Verilator): BRAM stimulus → shift-in →
+k96_vec_dot → fp32 chaining with per-case resets → comparator → LED/UART
+verdict, producing `G0 PASS` (21/21 records byte-checked AND partial-checked
+against the kernel-level artifacts). Silico-validation caught three real bugs
+the board would have hidden: (1) descending reads paired with right-shift-in
+inverts the byte layout (left-shift-in is correct), (2) golden cums[] are
+per-case cumulative — the on-chip chain must reset at case boundaries (a
+1-bit flag ROM from the `rec{i}_case` ids), (3) `done_flag` was never set so
+the LED pass/fail pattern never engaged.
+
+**GW2A-18 PnR is the open blocker — and it says the V1 kernel shape is out**:
+yosys+nextpnr+apicula flow is green end to end (synth probe, 9 BSRAM infer,
+CST constraints, bitstream pack, JTAG load via the Sipeed FT2232 pod); the
+k96 datapath alone synthesized and PnR'd at 30.9 MHz. But the FULL gate top
+(14914 LUT4-equiv = 71%, byte-serial muxes feeding the 1600/2176-bit kernel
+ports are the whale) fails legal placement — deterministically, across seeds
+and modes. `-abc9` gives back ~1.4K LUTs, not enough. Diagnosis: V1 is a
+sim-shape (parallel wide ports); silicon needs the V2 streaming kernel
+(consume wblk/act as byte streams in t-order — all consumption indices are
+sequential or buffered-by-construction: lb = wblk byte 8+t, hh pairs stride
+one byte per two t, act blocks stream contiguously), which also removes the
+wide shift registers. Registered as the next gate workstream.
+
+Board facts (logged for bring-up): the pod here is the Sipeed USB Debugger
+(FT2232, Sipeed serial 2025030317) wired to the EXPAND JTAG pins —
+openFPGALoader `--board tangnano20k` flows through it (board default cable
+ft2232); the board's own BL616 USB-C pod is NOT host-connected (0489:e10a in
+lsusb is the machine's Bluetooth module, a red herring). Pins: clk=4 (27 MHz),
+LEDs 15–20, BL616 UART TXD/RXD=69/70, reset=88 (apicula CST, authoritative).
+The CH-B UART of the external pod shows nothing → verdict observation today
+is LEDs only (PASS = five LEDs on with led[4] off; running = heartbeat walk);
+beacon bitstream left loaded on the board. On-chip evidence is the tb_gate0
+silico-pass until a UART-visible path exists (plug board USB-C for ttyACM, or
+wire 69/70 to the pod's CH-B pair).

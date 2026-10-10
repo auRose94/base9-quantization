@@ -13,9 +13,8 @@
 //   wblk[8*b +: 8]        = wblk byte b  (sc[8] ql[128] qh[64], 200 B)
 //   act[272*j +: 16]      = fp16 scale of Q8_0 block j (bytes 2j, 2j+1 LE)
 //   act[272*j+16+8*m +: 8]= int8 code m of Q8_0 block j (two's complement)
-module k96_vec_dot
-  import f32_pkg::*;
-(
+// File-scope package import (module-header/module-body imports break yosys).
+module k96_vec_dot (
   input  logic        clk,
   input  logic        rst_n,
   input  logic        start,
@@ -96,19 +95,19 @@ module k96_vec_dot
           end else t <= t + 1;
         end
         S_SUMI: begin
-          sumi_r <= f32_add(sumi_r, f32_mul(f16_to_f32(d1_cap),
-                                            int_to_f32(sb_cap)));
+          sumi_r <= f32_pkg::f32_add(sumi_r, f32_pkg::f32_mul(f32_pkg::f16_to_f32(d1_cap),
+                                            f32_pkg::int_to_f32(sb_cap)));
 `ifdef GATE0_DEBUG
           $display("[k96] g=%0d k=%0d sb=%0d d1=%h sumi_before=%h sumi_after=%h",
                    g_cap, kk_cap, sb_cap, d1_cap, sumi_r, 
-                   f32_add(sumi_r, f32_mul(f16_to_f32(d1_cap), int_to_f32(sb_cap))));
+                   f32_pkg::f32_add(sumi_r, f32_pkg::f32_mul(f32_pkg::f16_to_f32(d1_cap), f32_pkg::int_to_f32(sb_cap))));
 `endif
           sumi_block <= 32'd0;
           if (kk_cap) st <= S_SUMF;
           else begin t <= t + 1; st <= S_MAC; end
         end
         S_SUMF: begin
-          sumf_r <= f32_add(sumf_r, f32_mul(f16_to_f32(d0_cap), sumi_r));
+          sumf_r <= f32_pkg::f32_add(sumf_r, f32_pkg::f32_mul(f32_pkg::f16_to_f32(d0_cap), sumi_r));
           sumi_r <= 32'b0;             // C: float sumi is per-group (declared in g-loop)
           if (g_cap == 2'd3) st <= S_OUT;
           else begin t <= t + 1; st <= S_MAC; end
