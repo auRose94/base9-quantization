@@ -432,10 +432,20 @@ module gate0sd_top (
   wire [3:0] led_lo = (st == S_PROV) ? prov_blk[3:0] :
                (done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0]);
   wire led_hi_run = (st == S_PROV);
-  assign led = card_err ? blink :
-               {led_hi_run ? 1'b1 : (done_flag ? (fail ? 1'b0 : 1'b1) : 1'b1),
-                done_flag && fail,
-                led_lo};
+  // board LEDs are ACTIVE-LOW (LiteX names them led_n): pads drive low = lit.
+  // internal lit-mask (1 = LED lit):
+  //   card_err  -> walking single blink
+  //   provision -> prov_blk binary on the 4 index LEDs, led[5] runs
+  //   running   -> binary record index, led[5] runs
+  //   G0 PASS   -> five lit, led[4] dark
+  //   G0 FAIL   -> led[4] lit + failing record index
+  wire [5:0] lit_mask =
+    card_err ? blink :
+    {fail ? 1'b0 : 1'b1,                       // led[5]: run/pass on, fail off
+     done_flag && fail,                        // led[4]: fail marker
+     st == S_PROV ? prov_blk[3:0] :            // provisioning progress
+     (done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0])};
+  assign led = ~lit_mask;
 
   // ------------------------------------------------------- UART -----------
   logic        u_start, u_busy;

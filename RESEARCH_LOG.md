@@ -1824,3 +1824,43 @@ the verdict repeats on the pod UART. Throughput ledger: SPI-mode reads ≈
 1.7 MB/s ceiling (SCK ≤ 25 MHz), vs the datapath's ~10 MB/s at 27 MHz — the
 card is the new bottleneck by design; the 4-bit SD upgrade (DAT1/2 on pins
 85/80) is the registered next lever, then the SDRAM streaming stage.
+## 2026-10-10, session 29 (cont.) — SD writes: the board now provisions its own card
+
+Rose formatted the 256 GB card and re-inserted it, but the payload bytes (what
+the FPGA reads at LBA 2048) still needed a host-side write and no card reader
+was attached. Rather than block, the board gained the missing capability:
+`sd_spi_reader` now speaks **CMD24 writes** (NCR + 0xFE token + 512 bytes via a
+`wdata_req→wdata` word-fetch contract + dummy CRC16 + data-response-token and
+busy polling — every poll checks, since a fast card's token can land on the
+first poll; caught by the cocotb model).
+
+`gate0sd_top` is now a **self-provisioning gate**: the bitstream embeds the
+full Gate-0 payload (stim + exp + case flags — 20 LBAs) as BSRAM init; booting
+with the **user key held (pin 87)** writes the payload to the card, then reads
+all 20 blocks back and compares every word against the embedded payload
+(byte-exact roundtrip or the run refuses), then runs the gate from storage.
+Without the key, boot verifies the card against the payload and refuses to run
+the gate on mismatch — so the stored data is authoritative every boot.
+
+**Cocotb end-to-end (write + read + gate): G0 PASS**, with the model verifying
+every written block byte-for-byte and the reader surviving the write handshake.
+Five bugs off the model+probe pile this round: a dead-end poll state (the
+response token checked only after the poll where it landed), stale write-index
+state across blocks (every block re-wrote payload word 0), an un-cleared
+`wdata_req` (the payload index raced ahead of the reader), a missing `wdata`
+assign (all-zero writes), and the write payload offset (block k must start at
+pay[k·128]).
+
+**Build**: 7362 LUT4 (35%), 11 BSRAM, clk13 closes 29.25 MHz (13MHz target) —
+cleaner than the read-only build (the distributed-RAM16 mapping of the
+earlier attempt settled into BSRAMs). **Flashed.** Board behavior: boot →
+verify card (blink + "G0 SERR" if the payload roundtrip fails); hold the key
+at boot → provision + verify + gate + repeating "G0 PASS"/"G0 FAIL <cycles>"
+on the BL616 UART (pin 69).
+
+Caveat worth repeating: provisioning writes 20 LBAs at 2048–2067, which on a
+freshly FAT32-formatted whole-card layout lands inside the filesystem's data
+area — 10 KB of scrambled file bytes at worst, no structural damage likely,
+but the reader-based partition flow in `partner/ninths_sd_image.py` (dedicated
+payload partition + clean FAT32) remains the tidiest layout once a card reader
+is available.

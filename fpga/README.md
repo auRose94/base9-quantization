@@ -68,6 +68,16 @@ cheap streaming decode pipeline is a real serving path.
       BSRAM + 512 RAM16, closes 23.1 MHz on a 13.5 MHz fabric clock (27 MHz
       post-route was 17.4 MHz → divided clock through BUFG). **Flashed.**
       Card absent = walking blink + "G0 SERR"; card with payload = verdict.
+- [x] **Nonvolatile config + LED polarity (session 29 cont.)**: SRAM JTAG
+      loads are volatile — a power-cycle wiped the design (the "dark board").
+      `openFPGALoader --board tangnano20k -f gate0sd.fs` writes the bitstream
+      into the board's SPI config flash, so every power-up boots it. Board
+      LEDs are ACTIVE-LOW (LiteX names them led_n): pads inverted; visuals —
+      card-error = walking single blink; provisioning/run = led[5] on with
+      the progress index on the four index LEDs; **G0 PASS = exactly the
+      five index-side LEDs dark except one; G0 FAIL = a distinct lit marker
+      plus the failing record index** (see gate0sd_top lit_mask). Also fix:
+      `openFPGALoader` writes flash via `-f`, there is no `--flash` flag.
 - [x] **Host partner program** (`partner/ninths_sd_image.py`): mkimage builds
       the SD payload (stim + exp + case-start flags at LBA 2048, 20 blocks);
       flash-card/verify need a USB reader + root (none attached at run time —

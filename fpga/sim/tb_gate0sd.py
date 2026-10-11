@@ -377,8 +377,9 @@ async def gate_from_card(dut):
 
     if vline.startswith(b"G0 PASS"):
         led_v = int(dut.led.value)
-        assert led_v & 0b100000 and not (led_v & 0b10000) and (led_v & 0b1111) == 0b1111, \
-            f"PASS but LEDs {led_v:06b}"
+        # pads are active-low: PASS = exactly one pad low (led[5]),
+        # led[4] high (dark), the four index pads low on
+        assert led_v == 0b010000, f"PASS but LED pads {led_v:06b}"
     elif vline.startswith(b"G0 FAIL"):
         npz_all = bytearray()
         for i in range(21):
