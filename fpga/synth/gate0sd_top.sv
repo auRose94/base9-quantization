@@ -22,7 +22,8 @@ module gate0sd_top (
   output wire        sd_cs_n,    // microSD slot: CS 81, CMD 82, CLK 83, DAT0 84
   output wire        sd_sck,
   output wire        sd_mosi,
-  input  wire        sd_miso
+  input  wire        sd_miso,
+  input  wire        prov_btn     // user key (pin 87, pull-up, low = pressed)
 );
   localparam integer N_RECS      = 21;
   localparam integer W_PER_REC   = 118;  // 50 wblk + 68 act words
@@ -62,6 +63,13 @@ module gate0sd_top (
     $readmemh("exp_zero.hex", exp_mem);
     $readmemh("flags_zero.hex", flags_mem);
   end
+  // embedded ninths payload: 2560 words = 20 LBAs (the SD image verbatim:
+  // stim words 0..2477, exp words 2478..2498, case-start flags 2499..2519,
+  // zero padding to the block end). Source for provisioning AND the
+  // byte-exact readback reference.
+  reg [31:0] pay [0:2559];
+  initial $readmemh("pay.hex", pay);
+
   reg [11:0] rd_addr  = 12'd0;
   reg [4:0]  exp_addr = 5'd0;
 
@@ -75,16 +83,37 @@ module gate0sd_top (
   reg [23:0] boot_to;
   reg        card_err, sd_pend;
 
-  wire [31:0] sd_word_r;
+  wire [31:0] sd_word_r, sd_wdata;
   wire        sd_word_v_r, sd_rd_done_r, sd_done_r, sd_error_r, sd_busy_r;
+  wire        sd_wdata_req;
+  reg        sd_wpend;                   // write request pending (level)
+  reg [11:0] pay_a;                      // payload read address (shared)
+  reg [31:0] pay_q;
+  reg        prov;                       // provisioning requested (button)
+  reg [5:0]  prov_blk;                   // blocks written this run
+  reg        provv_err;
 
   sd_spi_reader sdr (
     .clk(clk13), .rst_n(rst_n),
     .spi_cs_n(sd_cs_n), .miso(sd_miso), .sck(sd_sck), .mosi(sd_mosi),
-    .start(sd_start), .read_req(sd_pend), .lba(sd_lba),
+    .start(sd_start), .read_req(sd_pend), .write_req(sd_wpend), .lba(sd_lba),
+    .wdata_req(sd_wdata_req), .wdata(sd_wdata),
     .busy(sd_busy_r), .done(sd_done_r), .error(sd_error_r),
     .word_valid(sd_word_v_r), .word_out(sd_word_r), .rd_done(sd_rd_done_r)
   );
+
+  assign sd_wdata = pay_q;   // written-word stream (stable 4 exchanges)
+
+  // payload read port: during provisioning the write stream needs the next
+  // word when wdata_req arrives; during fill/verify the address tracks the
+  // arriving card words
+  always @(posedge clk13) begin
+    if (st == S_PROV) begin
+      if (sd_wdata_req) pay_q <= pay[wpay];
+    end else if (st == S_SDFILL && sd_word_v_r) begin
+      pay_q <= pay[pay_a];
+    end
+  end
 
   // reader outputs are registered once here (the fill logic then sees them
   // one cycle late -- deliberately simple, the fill is not speed-critical)
@@ -186,15 +215,18 @@ module gate0sd_top (
   logic        cs_r;
   logic [31:0] cyc = 32'd0;
 
-  localparam S_BOOT=3'd0, S_SDBOOT=3'd1, S_SDFILL=3'd2, S_LOAD=3'd3,
-             S_RUNA=3'd4, S_RUNW=3'd5, S_WAIT=3'd6, S_DONE=3'd7;
-  reg [2:0] st = S_BOOT;
+  localparam S_BOOT=4'd0, S_SDBOOT=4'd1, S_SDFILL=4'd2, S_LOAD=4'd3,
+             S_RUNA=4'd4, S_RUNW=4'd5, S_WAIT=4'd6, S_DONE=4'd7,
+             S_PROV=4'd8;
+  reg [3:0] st = S_BOOT;
+  reg [3:0] prov_ph = S_PROV;
 
   logic [31:0] sumf_next;
   assign sumf_next = f32_pkg::f32_add(sumf, k_partial);
 
   // SD fill bookkeeping (the reader's outputs are 1 cycle delayed here)
   reg [31:0] sd_wr;
+  reg [11:0] wpay;                     // payload word index while writing
   always @(posedge clk13) begin
     if (!rst_n) begin
       sd_start  <= 1'b0;
@@ -205,14 +237,32 @@ module gate0sd_top (
       card_err  <= 1'b0;
       sd_pend   <= 1'b0;
       sd_lba    <= 32'(SD_BASE_LBA);
+      prov      <= 1'b0;
+      prov_blk  <= 6'd0;
+      provv_err <= 1'b0;
+      sd_wpend  <= 1'b0;
+      wpay      <= 12'd0;
+      pay_a     <= 12'd0;
+      pay_q     <= 32'd0;
     end else begin
       sd_start <= 1'b0;
       case (st)
         S_SDBOOT: boot_to <= boot_to + 24'd1;
         S_SDFILL: begin
-          if (sd_busy && sd_pend) begin    // reader captured the request
+          if (sd_busy && sd_pend) begin    // reader captured the read request
             sd_pend <= 1'b0;
             sd_lba  <= sd_lba + 32'd1;
+          end
+        end
+        S_PROV: begin
+          if (sd_busy && sd_wpend) begin   // reader captured the write request
+            sd_wpend <= 1'b0;
+            sd_lba   <= sd_lba + 32'd1;
+            wpay     <= 12'(32'(prov_blk) * 32'd128);   // block k starts at k*128
+          end
+          if (sd_wdata_req) begin          // caller side of the write stream
+            pay_q <= pay[wpay];
+            wpay <= wpay + 12'd1;
           end
         end
         default: ;
@@ -247,16 +297,46 @@ module gate0sd_top (
               card_err <= 1'b1;
               st <= S_DONE;
             end else begin
+              prov <= !prov_btn;              // key held = provision this boot
+              prov_blk <= 6'd0;
+              provv_err <= 1'b0;
               sd_blk  <= 6'd0;
               sd_blkw <= 7'd0;
               sd_wr   <= 32'd0;
               sd_lba  <= 32'(SD_BASE_LBA);
-              sd_pend <= 1'b1;
+              wpay    <= 12'd0;
+              pay_a   <= 12'd0;
+              if (!prov_btn) begin
+                sd_wpend <= 1'b1;
+                st <= S_PROV;
+              end else begin
+                sd_pend <= 1'b1;
+                st <= S_SDFILL;
+              end
+            end
+          end
+        end
+        S_PROV: begin
+          if (sd_rd_done) begin               // one block written
+            prov_blk <= prov_blk + 6'd1;
+            if (prov_blk == 6'd19) begin
+              sd_blk  <= 6'd0;
+              sd_blkw <= 7'd0;
+              sd_wr   <= 32'd0;
+              sd_lba  <= 32'(SD_BASE_LBA);
+              pay_a   <= 12'd0;
+              sd_pend <= 1'b1;              // now read back + verify
               st <= S_SDFILL;
+            end else begin
+              sd_wpend <= 1'b1;
             end
           end
         end
         S_SDFILL: begin
+          // payload read address tracks the arriving stream (registered once)
+          if (sd_word_v_r) pay_a <= pay_a + 12'd1;
+          if (sd_word_v && pay_q != sd_word)
+            provv_err <= 1'b1;              // card roundtrip is not byte-exact
           if (sd_word_v) begin              // reader pulses one word/cycle
             case (sd_blk)
               6'd19: begin                  // stim tail + exp + flags
@@ -276,7 +356,10 @@ module gate0sd_top (
           end
           if (sd_rd_done) begin
             if (sd_blk >= 6'd20) begin     // 20 blocks resident
-              st <= S_LOAD;
+              if (provv_err) begin
+                card_err <= 1'b1;          // card != embedded payload
+                st <= S_DONE;
+              end else st <= S_LOAD;
             end else begin
               sd_pend <= 1'b1;             // level request for the next block
             end
@@ -346,10 +429,13 @@ module gate0sd_top (
       end
     end
   end
+  wire [3:0] led_lo = (st == S_PROV) ? prov_blk[3:0] :
+               (done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0]);
+  wire led_hi_run = (st == S_PROV);
   assign led = card_err ? blink :
-               {done_flag ? (fail ? 1'b0 : 1'b1) : 1'b1,
+               {led_hi_run ? 1'b1 : (done_flag ? (fail ? 1'b0 : 1'b1) : 1'b1),
                 done_flag && fail,
-                done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0]};
+                led_lo};
 
   // ------------------------------------------------------- UART -----------
   logic        u_start, u_busy;

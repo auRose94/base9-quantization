@@ -30,3 +30,5 @@ IO_LOC  "sd_mosi" 82;
 IO_PORT "sd_mosi" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
 IO_LOC  "sd_miso" 84;
 IO_PORT "sd_miso" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+IO_LOC  "prov_btn" 87;
+IO_PORT "prov_btn" IO_TYPE=LVCMOS33 PULL_MODE=UP;

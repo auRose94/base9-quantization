@@ -27,7 +27,10 @@ module sd_spi_reader (
   // control
   input  wire        start,
   input  wire        read_req,
+  input  wire        write_req,    // CMD24: caller holds lba + supplies wdata
   input  wire [31:0] lba,
+  output reg         wdata_req,    // 1-cycle pulse per 512-B word request
+  input  wire [31:0] wdata,        // caller returns the word after the pulse
   output reg         busy,
   output reg         done,
   output reg         error,
@@ -54,12 +57,15 @@ module sd_spi_reader (
              S_F=4,     S_FW=5,    S_P=6,    S_PW=7,
              S_RESP=8,  S_RESPW=9, S_AFTER=10, S_CSW=11, S_CSWW=12,
              S_RRDY=13, S_TOK=14,  S_TOKW=15, S_DATA=16, S_DATAW=17,
-             S_CRC=18,  S_CRCW=19, S_RDEND=20, S_RDENDW=21, S_EXIT=22;
-  reg [4:0] st;
-  reg [4:0] post;        // state to jump to after the CS resync byte
+             S_CRC=18,  S_CRCW=19, S_RDEND=20, S_RDENDW=21, S_EXIT=22,
+             S_WIDL=23, S_WTOK=24, S_WDAT=25, S_WDAT0=26, S_WDAT1=27,
+             S_WDAT2=28, S_WDAT3=29, S_WCRC1=30, S_WCRC2=31, S_WRESP=32,
+             S_WRESPW=33, S_WBUSY=34;
+  reg [5:0] st;
+  reg [5:0] post;        // state to jump to after the CS resync byte
 
   localparam PL_CMD0=0, PL_CMD8=1, PL_CMD55=2, PL_CMD41=3,
-             PL_CMD58=4, PL_CMD17=5;
+             PL_CMD58=4, PL_CMD17=5, PL_CMD24=6;
   reg [2:0] plan;
 
   reg [5:0]  cmdsel;
@@ -103,6 +109,7 @@ module sd_spi_reader (
       done <= 1'b0;
       word_valid <= 1'b0;
       rd_done <= 1'b0;
+      wdata_req <= 1'b0;
       if (busy) to <= to + 32'd1;
       case (st)
         S_IDLE: if (start) begin
@@ -173,7 +180,17 @@ module sd_spi_reader (
           end
         end
         S_AFTER: begin                    // R1 captured: dispatch `plan`
-          if (plan == PL_CMD17) begin
+          if (plan == PL_CMD24) begin
+            if (r1q == 8'h00) begin
+              toc <= to + TOK_BUDGET;
+              st <= S_WIDL;               // CS stays LOW through the write
+            end else begin
+              error <= 1'b1; post <= S_RDEND;
+              spi_cs_n <= 1'b1;
+              m_tx <= 8'hFF; m_go <= 1'b1;
+              st <= S_CSW;
+            end
+          end else if (plan == PL_CMD17) begin
             if (r1q == 8'h00) begin
               toc <= to + TOK_BUDGET;
               st <= S_TOK;                // CS stays LOW through the block
@@ -260,6 +277,14 @@ module sd_spi_reader (
           txi <= 4'd0;
           busy <= 1'b1;
           st <= S_F;
+        end else if (!busy && write_req) begin
+          lba_q <= lba;
+          plan <= PL_CMD24; cmdsel <= 6'd24; arg <= lba; crc8 <= 8'h01;
+          resp_need <= 2'd0;
+          txi <= 4'd0;
+          bcyc <= 32'd0;              // reused: word index in the block
+          busy <= 1'b1;
+          st <= S_F;
         end
         S_TOK: if (to >= toc) begin
           error <= 1'b1; post <= S_RDEND;
@@ -306,6 +331,88 @@ module sd_spi_reader (
             bcyc <= bcyc + 32'd1;
             st <= S_CRC;
           end
+        end
+        // ------------------------- CMD24 write block --------------------
+        // After CMD24's R1: one 0xFF idle byte (NCR), the 0xFE start token,
+        // 512 data bytes (little-endian words fetched through wdata_req ->
+        // wdata; the caller holds the word stable across its four exchanges),
+        // a dummy CRC16 (cards default CRC-off), then poll the data-response
+        // token ((rx & 0x1F) == 5 accepted) and the busy state (rx == 0x00).
+        S_WIDL: begin
+          m_tx <= 8'hFF; m_go <= 1'b1; bcyc <= 32'd0; st <= S_WTOK;
+        end
+        S_WTOK: begin
+          m_tx <= 8'hFE; m_go <= 1'b1; st <= S_WDAT;
+        end
+        S_WDAT: begin
+          wdata_req <= 1'b1;
+          st <= S_WDAT0;
+        end
+        S_WDAT0: if (m_done) begin        // FE byte completed here
+          m_tx <= wdata[7:0];
+          m_go <= 1'b1;
+          st <= S_WDAT1;
+        end
+        S_WDAT1: if (m_done) begin
+          m_tx <= wdata[15:8];
+          m_go <= 1'b1;
+          st <= S_WDAT2;
+        end
+        S_WDAT2: if (m_done) begin
+          m_tx <= wdata[23:16];
+          m_go <= 1'b1;
+          st <= S_WDAT3;
+        end
+        S_WDAT3: if (m_done) begin
+          m_tx <= wdata[31:24];
+          m_go <= 1'b1;
+          bcyc <= bcyc + 32'd1;
+          if (bcyc == 32'd127) st <= S_WCRC1;
+          else st <= S_WDAT;
+        end
+        S_WCRC1: if (m_done) begin
+          m_tx <= 8'hAA;                  // dummy CRC16, part 1
+          m_go <= 1'b1;
+          st <= S_WCRC2;
+        end
+        S_WCRC2: if (m_done) begin
+          m_tx <= 8'h6D;                  // dummy CRC16, part 2
+          m_go <= 1'b1;
+          st <= S_WRESP;
+        end
+        S_WRESP: if (m_done) begin        // poll the data-response token --
+          // EVERY poll exchange's completion is tested here: an accepted
+          // card token (0bxxx05) can land on the very first poll.
+          m_tx <= 8'hFF;
+          m_go <= 1'b1;
+          if (m_rx != 8'hFF && (m_rx & 8'h1F) == 8'h05) begin
+            toc <= to + TOK_BUDGET;     // budget now covers the busy wait
+            st <= S_WBUSY;
+          end else if (m_rx != 8'hFF) begin
+            error <= 1'b1; post <= S_RDEND;
+            spi_cs_n <= 1'b1;
+            m_tx <= 8'hFF; m_go <= 1'b1;
+            st <= S_CSW;
+          end else if (to >= toc) begin
+            error <= 1'b1; post <= S_RDEND;
+            spi_cs_n <= 1'b1;
+            m_tx <= 8'hFF; m_go <= 1'b1;
+            st <= S_CSW;
+          end else st <= S_WRESP;
+        end
+        S_WBUSY: if (m_done) begin        // card holds MISO low while flashing
+          m_tx <= 8'hFF;
+          m_go <= 1'b1;
+          if (to >= toc) begin
+            error <= 1'b1; post <= S_RDEND;
+            spi_cs_n <= 1'b1;
+            m_tx <= 8'hFF; m_go <= 1'b1;
+            st <= S_CSW;
+          end else if (m_rx != 8'h00) begin
+            spi_cs_n <= 1'b1;
+            m_tx <= 8'hFF; m_go <= 1'b1;
+            st <= S_RDEND;
+          end else st <= S_WBUSY;
         end
         S_RDEND: begin
           m_tx <= 8'hFF; m_go <= 1'b1;

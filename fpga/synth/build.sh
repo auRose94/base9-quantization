@@ -1,20 +1,26 @@
 #!/bin/bash
-# Gate-0 silicon gate for Tang Nano 20K (GW2AR-LV18QN88C8/I7).
-# gen memory -> yosys -> nextpnr-himbaechel -> apicula gowin_pack.
+# Gate-0 silicon variants. Default: the SD-card-fed gate (gate0sd_top) —
+# boots the microSD, verifies the payload roundtrip, runs the gate, reports
+# on LEDs + UART. Hold the user key (pin 87) during boot to RE-PROVISION the
+# card (writes 20 LBAs from the bitstream's embedded payload at LBA 2048).
+# Targets: gate0sd_top | gate0v2_top (BRAM-only gate) | beacon_top.
+TARGET=${1:-gate0sd_top}
 set -e
 cd "$(dirname "$0")"
 source ~/Work/tools/oss-cad-suite/environment
 
-[ -f stim.hex ] || python3 gen_mem.py
+[ -f stim.hex ] || echo "warning: stim.hex missing (needed for $TARGET)"
 
-yosys -ql gate0_synth.log -p \
-  "read_verilog -sv ../rtl/f32_pkg.sv ../rtl/k96_vec_dot.sv uart_tx.sv gate0_top.sv; \
-   synth_gowin -top gate0_top -json gate0.json -family gw2a"
+if [ "$TARGET" = "gate0sd_top" ]; then
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_top.sv"
+elif [ "$TARGET" = "gate0v2_top" ]; then
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv uart_tx.sv gate0v2_top.sv"
+else
+  RTL="uart_tx.sv"
+fi
 
-nextpnr-himbaechel --json gate0.json \
-  --device GW2AR-LV18QN88C8/I7 \
-  --vopt family=GW2A-18C --vopt cst=board.cst \
-  --freq 27 --write gate0_pnr.json 2>&1 | tail -30
-
-gowin_pack -c -d GW2A-18C -o gate0.fs gate0_pnr.json
-echo "gate0.fs written"
+yosys -ql gate_synth.log -p "read_verilog -sv $RTL; synth_gowin -top $TARGET -json gate.json -family gw2a"
+nextpnr-himbaechel --json gate.json --device GW2AR-LV18QN88C8/I7 \
+  --vopt family=GW2A-18C --vopt cst=board.cst --freq 13 --write gate_pnr.json
+gowin_pack -c -d GW2A-18C -o $TARGET.fs gate_pnr.json
+echo "$TARGET.fs written; flash: openFPGALoader --board tangnano20k $TARGET.fs"

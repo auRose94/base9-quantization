@@ -46,6 +46,10 @@ class SdCardModel:
         self.frame = []
         self.fhist = []
         self.acmd41_seen = 0
+        self.wr_active = None    # LBA being written (SPI write capture)
+        self.wr_i = -1
+        self.wr_bytes = bytearray()
+        self.wr_done_logs = []
 
     def queue_byte(self, v):
         for k in range(7, -1, -1):
@@ -74,6 +78,13 @@ class SdCardModel:
             self.queue_r1(0x01 if self.acmd41_seen < 4 else 0x00)
         elif cmd == 58:
             self.queue_r1(0x00, arg=(0xC0, 0xFF, 0x80, 0x00))  # CCS=1
+        elif cmd == 24:
+            rel = arg - BASE_LBA
+            assert 0 <= rel < N_BLOCKS, (arg, rel)
+            self.wr_active = rel                 # model captures card writes
+            self.wr_i = -1
+            self.wr_bytes = bytearray()
+            self.queue_r1(0x00)
         elif cmd == 17:
             self.dut._log.info("CMD17 lba=%d", arg)
             rel = arg - BASE_LBA
@@ -115,22 +126,56 @@ class SdCardModel:
                     for i, bit in enumerate(self.bits):
                         b |= bit << (7 - i)
                     self.bits = []
+                    if self.wr_active is not None:
+                        if self.wr_i == -1:
+                            # pre-token: polls and NCR stuffing, all 0xFF;
+                            # the first 0xFE after CMD24's R1 is the token
+                            if b == 0xFE:
+                                self.wr_i = 0
+                            else:
+                                assert b == 0xFF, f"expected FF pre-token, got {b:#x}"
+                        elif self.wr_i < 512:
+                            self.wr_bytes.append(b)
+                            self.wr_i += 1
+                        elif self.wr_i < 514:
+                            self.wr_i += 1    # dummy CRC16 bytes
+                        else:
+                            # write done: payload + CRC consumed
+                            print(f"  MODEL-RESPOND: LBA {self.wr_active} "
+                                  f"bytes {len(self.wr_bytes)} queued 05+busy")
+                            base = (self.wr_active) * 512
+                            got = bytes(self.wr_bytes)
+                            want = self.payload[base:base+512]
+                            assert got == want, (
+                                f"write mismatch LBA {self.wr_active}: "
+                                f"len {len(got)} vs {len(want)}; first diff at "
+                                f"{next((i for i in range(512) if got[i] != want[i]), None)}, "
+                                f"got {got[:12].hex()} want {want[:12].hex()}, "
+                                f"tail {got[-8:].hex()} vs {want[-8:].hex()}")
+                            self.wr_done_logs.append(self.wr_active)
+                            self.queue_byte(0x05)        # data accepted
+                            for _ in range(3):
+                                self.queue_byte(0xFF)
+                            self.wr_active = None
+                            self.wr_i = -1
                     # a command frame STARTS with a byte whose top two bits
-                    # are 01; other transactions (R1 polls, data fills) are
-                    # invisible to the frame assembly -- exactly how a real
-                    # card finds its frames.
-                    if len(self.frame) == 0:
-                        if (b >> 6) == 0b01:
+                    # are 01; other transactions (R1 polls, data fills, write
+                    # payloads) are invisible to the frame assembly -- exactly
+                    # how a real card finds its frames. Writes lock the
+                    # assembly out entirely (data bytes can look like frames).
+                    if self.wr_active is None:
+                        if len(self.frame) == 0:
+                            if (b >> 6) == 0b01:
+                                self.frame.append(b)
+                        else:
                             self.frame.append(b)
-                    else:
-                        self.frame.append(b)
-                        if len(self.frame) == 6:
-                            f = self.frame
-                            self.frame = []
-                            self.fhist.append(f[0] & 0x3F)
-                            if len(self.fhist) > 40000:
-                                self.fhist.pop(0)
-                            self.on_frame(f)
+                            if len(self.frame) == 6:
+                                f = self.frame
+                                self.frame = []
+                                self.fhist.append(f[0] & 0x3F)
+                                if len(self.fhist) > 40000:
+                                    self.fhist.pop(0)
+                                self.on_frame(f)
             prev_sck = sck
 
 
@@ -138,6 +183,7 @@ class SdCardModel:
 async def gate_from_card(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     dut.rst_b.value = 1
+    dut.prov_btn.value = 0            # provisioning key held during boot
 
     payload = Path("ninths_sd.bin").read_bytes()
     model = SdCardModel(dut, payload)
@@ -198,6 +244,64 @@ async def gate_from_card(dut):
                 uarts.append(b)
             prev = cur
 
+    wire_cap = []
+    async def wcapture():
+        armed = False
+        got = 0
+        prev = None
+        while True:
+            await RisingEdge(dut.clk)
+            try:
+                stv = int(dut.sdr.st.value)
+                v = (int(dut.sd_cs_n.value), int(dut.sd_sck.value),
+                     int(dut.sd_mosi.value), int(dut.sd_miso.value),
+                     int(dut.sdr.m_done.value))
+            except Exception:
+                continue
+            if stv == 32 or armed:
+                armed = True
+                if v != prev:
+                    wire_cap.append(v)
+                    prev = v
+                    got += 1
+                if got > 150:
+                    for w in wire_cap[:90]:
+                        print(f"  W({w[0]}{w[1]}{w[2]}{w[3]} md{w[4]})")
+                    return
+
+    cocotb.start_soon(wcapture())
+    async def wpaywatch():
+        n = 0
+        while True:
+            await RisingEdge(dut.clk)
+            try:
+                if int(dut.sd_wdata_req.value) and n < 5:
+                    n += 1
+                    print(f"  wreq#{n}: wpay={int(dut.wpay.value)} pay_q="
+                          f"{int(dut.pay_q.value) & 0xFFFFFFFF:08x} sd_wdata="
+                          f"{int(dut.sd_wdata.value) & 0xFFFFFFFF:08x} "
+                          f"pay[0]={int(dut.pay[0].value) & 0xFFFFFFFF:08x}")
+            except Exception:
+                pass
+
+    async def wrespwatch():
+        seen = 0
+        while True:
+            await RisingEdge(dut.clk)
+            try:
+                if int(dut.sdr.st.value) == 33 and seen < 8:
+                    seen += 1
+                    q = model.resp
+                    md = int(dut.sdr.m_done.value)
+                    print(f"  WRESPW#{seen}: md={md} m_rx={int(dut.sdr.m_rx.value):#04x} "
+                          f"miso={int(dut.sd_miso.value)} qbits={len(q)} "
+                          f"wr_i={model.wr_i} wact={model.wr_active} "
+                          f"sck={int(dut.sd_sck.value)} mosi={int(dut.sd_mosi.value)}")
+            except Exception:
+                pass
+
+    cocotb.start_soon(wrespwatch())
+    cocotb.start_soon(wpaywatch())
     cocotb.start_soon(uart_rx())
 
     waited = 0
