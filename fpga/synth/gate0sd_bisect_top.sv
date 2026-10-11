@@ -1,0 +1,390 @@
+// On-silicon Gate-0 with the stimulus resident on the microSD card (SPI mode).
+//
+// Boot: sd_spi_reader brings the card up (SDHC/SDXC SPI, CCS confirmed) and
+// streams 20 blocks of the ninths image into the stimulus BRAM: words 0..2477
+// = stim, and inside LBA 19 words 46..66 = exp (21 words), words 67..87 =
+// flags (21 x u32, bit0 used). Image layout/magic: partner/ninths_sd_image.py.
+// After boot the machinery is byte-identical to gate0v2_top: per record copy
+// to scratch, k96_vec_dot_v2 in exact C-consumption order, fp32 chaining with
+// per-case resets, compare vs the card-borne golden cums, LEDs + UART verdict.
+// Card errors = walking blink on the LEDs, no gate run.
+import f32_pkg::*;
+module gate0sd_bisect_top (
+  input  wire        clk,        // 27 MHz
+  input  wire        rst_b,      // active-low board reset (pull-up)
+  output wire [5:0]  led,
+  output wire        txd,
+  output wire        sd_cs_n,    // microSD slot: CS 81, CMD 82, CLK 83, DAT0 84
+  output wire        sd_sck,
+  output wire        sd_mosi,
+  input  wire        sd_miso
+);
+  localparam integer SD_BASE_LBA = 2048;   // payload partition 1 start
+  localparam integer N_RECS    = 21;
+  localparam integer W_PER_REC = 118;   // 50 wblk + 68 act words
+
+  reg [7:0] pwr = 8'd0;
+  wire rst_n = pwr[7] & rst_b;
+  always @(posedge clk) begin
+    if (!rst_b) pwr <= 8'd0;
+    else if (!pwr[7]) pwr <= pwr + 8'd1;
+  end
+
+  // ------------------------------------------------------- main stim ------
+  reg [31:0] stim   [0:4095];
+  reg [31:0] exp_mem [0:N_RECS-1];
+  reg        flags_mem [0:N_RECS-1];   // 1 = record starts a new case chain
+  reg [31:0] stim_q;
+  reg [31:0] exp_q;
+  reg        flags_q;
+  always @(posedge clk) stim_q  <= stim[rd_addr];
+  always @(posedge clk) exp_q   <= exp_mem[exp_addr];
+  always @(posedge clk) flags_q <= flags_mem[exp_addr];
+
+  reg [11:0] rd_addr  = 12'd0;
+  reg [4:0]  exp_addr = 5'd0;
+
+  // ------------------------------------------------------- SD boot --------
+  reg        sd_start, sd_read_req;
+  reg [31:0] sd_lba;
+  reg        sd_busy, sd_done, sd_error, sd_word_v, sd_rd_done;
+  reg [31:0] sd_word;
+  reg [6:0]  sd_blkw;
+  reg [5:0]  sd_blk;
+  reg [31:0] sd_wr;
+  reg [23:0] boot_to;
+  reg        card_err, card_ok;
+  reg        sd_pend;                    // block request pending (level)
+
+
+  // ---------------- stub reader (bisect, completes 20 blocks) ----------
+  reg [5:0] sblk = 0;
+  reg [6:0] swc  = 0;
+  reg [2:0] sst  = 0;   // 0 wait-done, 1 serve words, 2 end-block pulse
+  reg [3:0] sdone_cnt = 0;
+  assign sd_done    = (sst == 3'd0) && (sdone_cnt == 4'd1);
+  assign sd_error   = 1'b0;
+  assign sd_word_v  = (sst == 3'd1);
+  assign sd_word    = 32'(32'(sblk) * 32'd128 + 32'(swc));
+  assign sd_rd_done = (sst == 3'd2);
+  assign sd_busy    = (sst != 3'd0) && (sblk < 6'd20);
+  assign sd_cs_n = 1'b1; assign sd_sck = 1'b0; assign sd_mosi = 1'b1;
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      sblk <= 0; swc <= 0; sst <= 0; sdone_cnt <= 0;
+    end else begin
+      case (sst)
+        3'd0: begin
+          if (sd_start) sdone_cnt <= sdone_cnt + 1;
+          if (sdone_cnt == 4'd1) sst <= 3'd1;   // done consumed -> stream blocks
+        end
+        3'd1: begin
+          swc <= swc + 7'd1;
+          if (swc == 7'd127) begin
+            swc <= 7'd0; sblk <= sblk + 6'd1; sst <= 3'd2;
+            if (sblk == 6'd19) sblk <= 6'd20;
+          end
+        end
+        3'd2: begin
+          sst <= 3'd1;
+          if (sblk >= 6'd20) sst <= 3'd7;  // never serve again
+        end
+        default: ;
+      endcase
+    end
+  end
+
+
+  // ------------------------------------------------------- scratch --------
+  reg [31:0] wm [0:63];
+  reg [31:0] am [0:127];
+  reg [15:0] d0regs [0:3];
+  reg [15:0] d1regs [0:7];
+
+  reg [7:0]  cp_cnt = 8'd0;
+  reg [4:0]  sb_idx_r = 5'd0;
+  reg [31:0] wm_q0, wm_q1, am_q0;
+  reg [1:0]  wm_sel0, wm_sel1;
+  reg        a_sel0;
+
+  always @(posedge clk) begin
+    wm_q0 <= wm[waddr0[7:2]]; wm_sel0 <= waddr0[1:0];
+    wm_q1 <= wm[waddr1[7:2]]; wm_sel1 <= waddr1[1:0];
+    am_q0 <= am[aaddr0[8:2]]; a_sel0 <= aaddr0[1];
+    stim_q <= stim[rd_addr];
+  end
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      d0regs[0] <= 16'd0; d0regs[1] <= 16'd0; d0regs[2] <= 16'd0; d0regs[3] <= 16'd0;
+      d1regs[0] <= 16'd0; d1regs[1] <= 16'd0; d1regs[2] <= 16'd0; d1regs[3] <= 16'd0;
+      d1regs[4] <= 16'd0; d1regs[5] <= 16'd0; d1regs[6] <= 16'd0; d1regs[7] <= 16'd0;
+    end else if (st == S_LOAD && cp_cnt != 8'd0) begin
+      case (cp_cnt - 8'd1)
+        8'd0: begin d0regs[0] <= stim_q[15:0]; d0regs[1] <= stim_q[31:16]; end
+        8'd1: begin d0regs[2] <= stim_q[15:0]; d0regs[3] <= stim_q[31:16]; end
+        8'd50:  d1regs[0] <= stim_q[15:0];
+        8'd58:  d1regs[1] <= stim_q[31:16];
+        8'd67:  d1regs[2] <= stim_q[15:0];
+        8'd75:  d1regs[3] <= stim_q[31:16];
+        8'd84:  d1regs[4] <= stim_q[15:0];
+        8'd92:  d1regs[5] <= stim_q[31:16];
+        8'd101: d1regs[6] <= stim_q[15:0];
+        8'd109: d1regs[7] <= stim_q[31:16];
+        default: ;
+      endcase
+    end
+  end
+
+  // ------------------------------------------------------- kernel ---------
+  logic [7:0]  waddr0, waddr1;
+  logic [8:0]  aaddr0;
+  logic [3:0]  sreq_addr;
+  logic [7:0]  wdata0, wdata1;
+  logic [15:0] adata0, sdata;
+  logic        k_busy, k_done, k_start;
+  logic [2:0]  k_st;
+  logic [31:0] k_partial;
+
+  always_comb begin
+    case (wm_sel0)
+      2'd0: wdata0 = wm_q0[7:0];
+      2'd1: wdata0 = wm_q0[15:8];
+      2'd2: wdata0 = wm_q0[23:16];
+      2'd3: wdata0 = wm_q0[31:24];
+    endcase
+    case (wm_sel1)
+      2'd0: wdata1 = wm_q1[7:0];
+      2'd1: wdata1 = wm_q1[15:8];
+      2'd2: wdata1 = wm_q1[23:16];
+      2'd3: wdata1 = wm_q1[31:24];
+    endcase
+    adata0 = a_sel0 ? {am_q0[31:24], am_q0[23:16]}
+                    : {am_q0[15:8],  am_q0[7:0]};
+    sdata  = sreq_addr[3] ? d0regs[sreq_addr[1:0]] : d1regs[sreq_addr[2:0]];
+  end
+
+  k96_vec_dot_v2 kernel (
+    .clk(clk), .rst_n(rst_n), .start(k_start),
+    .waddr0(waddr0), .waddr1(waddr1), .aaddr0(aaddr0), .sreq_addr(sreq_addr),
+    .wdata0(wdata0), .wdata1(wdata1), .adata0(adata0), .sdata(sdata),
+    .busy(k_busy), .done(k_done), .k_st(k_st), .partial_bits(k_partial)
+  );
+
+  // ------------------------------------------------------- chain ----------
+  logic [31:0] sumf = 32'd0;
+  logic        fail = 1'b0;
+  logic [4:0]  fail_idx = 5'd0;
+  logic        done_flag = 1'b0;
+  logic [31:0] exp_r;
+  logic        cs_r;
+  logic [31:0] cyc = 32'd0;
+
+  localparam S_BOOT=3'd0, S_SDBOOT=3'd1, S_SDFILL=3'd2, S_LOAD=3'd3,
+             S_RUNA=3'd4, S_RUNW=3'd5, S_WAIT=3'd6, S_DONE=3'd7;
+  reg [2:0] st = S_BOOT;
+
+  logic [31:0] sumf_next;
+  assign sumf_next = f32_pkg::f32_add(sumf, k_partial);
+
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      st <= S_BOOT; sb_idx_r <= 5'd0; sumf <= 32'd0; fail <= 1'b0;
+      cp_cnt <= 8'd0; fail_idx <= 5'd0; done_flag <= 1'b0; k_start <= 1'b0;
+      cyc <= 32'd0;
+    end else begin
+      if (st != S_BOOT && st != S_SDBOOT && st != S_SDFILL && !done_flag)
+        cyc <= cyc + 32'd1;
+      k_start <= 1'b0;
+      sd_read_req <= 1'b0;
+      case (st)
+        S_BOOT: begin                     // bring the card up
+          sd_start <= 1'b1;
+          rd_addr  <= 12'd0;
+          exp_addr <= 5'd0;
+          cp_cnt   <= 8'd0;
+          st <= S_SDBOOT;
+        end
+        S_SDBOOT: begin
+          boot_to <= boot_to + 24'd1;
+          if (boot_to >= 24'd16777215) begin   // ~10 min watchdog
+            card_err <= 1'b1;
+            st <= S_DONE;
+          end else if (sd_done) begin
+            if (sd_error) begin
+              card_err <= 1'b1;
+              st <= S_DONE;
+            end else begin
+              card_ok <= 1'b1;
+              sd_lba  <= 32'(SD_BASE_LBA);
+              sd_blkw <= 7'd0;
+              sd_blk  <= 6'd0;
+              sd_wr   <= 32'd0;
+              sd_pend <= 1'b1;
+              st <= S_SDFILL;
+            end
+          end
+        end
+        S_SDFILL: begin
+          if (sd_busy && sd_pend) begin     // reader captured the request
+            sd_pend <= 1'b0;
+            sd_lba  <= sd_lba + 32'd1;
+          end
+          if (sd_word_v) begin                // reader pulses one word/cycle
+            case (sd_blk)
+              6'd19: begin                    // stim tail + exp + flags
+                if (sd_blkw < 7'd46)
+                  stim[12'(32'd2432 + 32'(sd_blkw))] <= sd_word;
+                else if (sd_blkw < 7'd67)
+                  exp_mem[5'(sd_blkw - 7'd46)] <= sd_word;
+                else if (sd_blkw < 7'd88)
+                  flags_mem[5'(sd_blkw - 7'd67)] <= sd_word[0];
+              end
+              default:
+                stim[12'(32'(sd_blk) * 32'd128 + 32'(sd_blkw))] <= sd_word;
+            endcase
+            sd_wr   <= sd_wr + 32'd1;
+            sd_blkw <= (sd_blkw == 7'd127) ? 7'd0 : (sd_blkw + 7'd1);
+            if (sd_blkw == 7'd127) sd_blk <= sd_blk + 6'd1;
+          end
+          if (sd_rd_done) begin
+            if (sd_blk >= 6'd20) begin        // 20 blocks resident
+              st <= S_LOAD;
+            end else begin
+              // level request: the reader captures `lba` whenever it reaches
+              // RRDY; bump lba only at capture (sd_busy rising), never before
+              sd_pend <= 1'b1;
+            end
+          end
+        end
+        S_LOAD: begin
+          // copy cycle cp_cnt = c: stim_q carries stim[base + c - 1] -> slot c-1
+          if (cp_cnt != 8'd0) begin
+            if (cp_cnt <= 8'd50)      wm[6'(cp_cnt - 8'd1)] <= stim_q;
+            else if (cp_cnt <= 8'd118) am[7'(cp_cnt - 8'd51)] <= stim_q;
+          end
+          if (cp_cnt == 8'd118) begin
+            exp_r <= exp_q;
+            cs_r  <= flags_q;
+            st <= S_RUNA;
+          end else begin
+            rd_addr  <= 12'(32'(sb_idx_r) * W_PER_REC + 32'(cp_cnt) + 32'd1);
+            cp_cnt <= cp_cnt + 8'd1;
+          end
+        end
+        S_RUNA: begin k_start <= 1'b1; st <= S_RUNW; end
+        S_RUNW: st <= S_WAIT;
+        S_WAIT: begin
+          if (k_done && !k_start) begin
+            if (cs_r) begin
+              sumf <= k_partial;
+              if (k_partial != exp_r) begin
+                if (!fail) fail_idx <= sb_idx_r;
+                fail <= 1'b1;
+              end
+            end else begin
+              sumf <= sumf_next;
+              if (sumf_next != exp_r) begin
+                if (!fail) fail_idx <= sb_idx_r;
+                fail <= 1'b1;
+              end
+            end
+            if (sb_idx_r == 5'd20) begin
+              done_flag <= 1'b1;
+              st <= S_DONE;
+            end else begin
+              sb_idx_r <= sb_idx_r + 5'd1;
+              exp_addr <= 5'(sb_idx_r) + 5'd1;
+              rd_addr  <= 12'(32'(sb_idx_r + 5'd1) * W_PER_REC);
+              cp_cnt   <= 8'd0;
+              st <= S_LOAD;
+            end
+          end
+        end
+        default: st <= S_DONE;
+      endcase
+    end
+  end
+
+  // ------------------------------------------------------- LEDs -----------
+  // card error: walking blink (bit0 walks); card ok + gate: V2 semantics.
+  reg [5:0] blink = 6'b000001;
+  reg [23:0] bcnt = 24'd0;
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      blink <= 6'b000001; bcnt <= 24'd0;
+    end else begin
+      bcnt <= bcnt + 24'd1;
+      if (bcnt == 24'd6000000) begin       // ~222 ms
+        bcnt <= 24'd0;
+        blink <= {blink[4:0], blink[5]};
+      end
+    end
+  end
+  assign led = card_err ? blink :
+               {done_flag ? (fail ? 1'b0 : 1'b1) : 1'b1,
+                done_flag && fail,
+                done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0]};
+
+  // ------------------------------------------------------- UART -----------
+  logic        u_start, u_busy;
+  logic [7:0]  u_data;
+  uart_tx #(.DIV(234)) utx (
+    .clk(clk), .rst_n(rst_n),
+    .start(u_start), .data(u_data), .tx(txd), .busy(u_busy)
+  );
+
+  // verdict line (17 chars): "G0 PASS" / "G0 FAIL" + 8 hex of cyc + CRLF
+  function [7:0] hexnyb(input [3:0] n);
+    hexnyb = (n < 10) ? (8'h30 + {4'b0, n}) : (8'h37 + {4'b0, n});
+  endfunction
+  function [7:0] tx_char(input [4:0] p);
+    case (p)
+      5'd0: tx_char = "G";
+      5'd1: tx_char = "0";
+      5'd2: tx_char = " ";
+      5'd3: tx_char = card_err ? "S" : fail ? "F" : "P";
+      5'd4: tx_char = card_err ? "E" : "A";
+      5'd5: tx_char = card_err ? "R" : fail ? "I" : "S";
+      5'd6: tx_char = card_err ? "R" : fail ? "L" : "S";
+      5'd15: tx_char = "\r";
+      5'd16: tx_char = "\n";
+      default: tx_char = hexnyb(cyc[31 - 4 * (p - 5'd7) -: 4]);
+    endcase
+  endfunction
+
+  logic [4:0] tx_ptr = 5'd0;
+  logic       tx_run = 1'b0;
+  logic [1:0] tx_st = 2'd0;
+  reg  [21:0] gap = 22'd0;
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      tx_ptr <= 5'd0; tx_run <= 1'b0; tx_st <= 2'd0; gap <= 22'd0;
+    end else if (st == S_DONE && !tx_run) begin
+      if (gap != 22'd0) gap <= gap - 22'd1;
+      else begin
+        tx_ptr <= 5'd0; tx_run <= 1'b1; tx_st <= 2'd0;
+      end
+    end else if (tx_run) begin
+      case (tx_st)
+        2'd0: begin
+          if (tx_ptr == 5'd17) begin
+            tx_run <= 1'b0;
+            gap    <= 22'h1FFFE;
+          end else begin
+            u_start <= 1'b1;
+            u_data  <= tx_char(tx_ptr);
+            tx_ptr  <= tx_ptr + 5'd1;
+            tx_st   <= 2'd1;
+          end
+        end
+        2'd1: begin
+          u_start <= 1'b0;
+          if (u_busy) tx_st <= 2'd2;
+        end
+        default: if (!u_busy) tx_st <= 2'd0;
+      endcase
+    end else u_start <= 1'b0;
+  end
+endmodule

@@ -21,3 +21,12 @@ IO_PORT "led[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
 // BL616 pod USB-C UART
 IO_LOC  "txd" 69;
 IO_PORT "txd" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+// microSD slot (Tang Nano 20K: FPGA-wired via LiteX sipeed_tang_nano_20k map)
+IO_LOC  "sd_cs_n" 81;
+IO_PORT "sd_cs_n" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+IO_LOC  "sd_sck" 83;
+IO_PORT "sd_sck" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "sd_mosi" 82;
+IO_PORT "sd_mosi" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "sd_miso" 84;
+IO_PORT "sd_miso" IO_TYPE=LVCMOS33 PULL_MODE=UP;

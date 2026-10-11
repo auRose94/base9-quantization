@@ -58,11 +58,24 @@ cheap streaming decode pipeline is a real serving path.
       in for the BL616 ttyACM, or 69/70 wired to the external pod's CH-B;
       an EXPAND "tx fan" shotgun was tried and abandoned — several header
       pins are vendor-reserved, and the wiring position is unknown anyway).
-- [ ] Next rungs: K9_7/K9_4 V2 kernels (same skeleton, C harness already
-      validates them); fetch/compute overlap (double-buffer scratch) and a
-      2-deep skid buffer to hold the ~1.9-byte-step/cycle headroom; then the
-      SDRAM streaming stage — real ninths tensor bytes streaming through the
-      datapath (the streamed-model ladder's first rung on this board).
+- [x] **microSD streaming backend (session 29)**: the Tang's slot is wired
+      to the FPGA (SD_CS=81, CMD=82, CLK=83, DAT0=84 — LiteX sipeed map).
+      `rtl/spi_byte_master.sv` + `rtl/sd_spi_reader.sv` implement SDHC/SDXC
+      SPI-mode init (375 kHz init window → 6.75 MHz SCK data, CMD0/8/41-hcs/58,
+      CMD17 blocks-as-words) and `synth/gate0sd_top.sv` boots the card and
+      fills stim/exp/flags from it — **validated end-to-end in cocotb with a
+      modeled card (G0 PASS, fill byte-exact)**. PnR: 11441 LUT4 (55%), 32
+      BSRAM + 512 RAM16, closes 23.1 MHz on a 13.5 MHz fabric clock (27 MHz
+      post-route was 17.4 MHz → divided clock through BUFG). **Flashed.**
+      Card absent = walking blink + "G0 SERR"; card with payload = verdict.
+- [x] **Host partner program** (`partner/ninths_sd_image.py`): mkimage builds
+      the SD payload (stim + exp + case-start flags at LBA 2048, 20 blocks);
+      flash-card/verify need a USB reader + root (none attached at run time —
+      no card was formatted yet; tool ready).
+- [ ] Next rungs: K9_7/K9_4 V2 kernels; format the 256 GB card via the
+      partner tool when a reader is attached; 4-bit SD mode (DAT1/2 = 85/80)
+      for ~5× SPI throughput; fetch/compute overlap + skid buffer; SDRAM
+      streaming stage (the streamed-model ladder's first rung).
 
 ## Board notes (Tang Nano 20K)
 

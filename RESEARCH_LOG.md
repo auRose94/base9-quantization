@@ -1783,3 +1783,44 @@ hundreds of MB/s, so the datapath is *not yet* the binding constraint —
 which is the correct stage order: the next rung IS the SDRAM streaming stage
 (a real ninths tensor tiled through the datapath, bit-exact vs the C
 materializer), then K9_7/K9_4 kernels.
+## 2026-10-10, session 29 — microSD streaming backend: reader built, sim-verified, PnR'd, flashed
+
+The streamed-model work's next rung: the board's **microSD slot is FPGA-wired**
+(SD_CS=81 / CMD=82 / CLK=83 / DAT0=84, pins from LiteX's sipeed_tang_nano_20k),
+so a card can hold the ninths containers and make the board demo standalone —
+no PC during inference. The host keeps authoring/verifying containers: that is
+the "partner program" split, implemented as `fpga/partner/ninths_sd_image.py`
+(mkimage: stim + exp + case-start flags into 20 LBAs at the 2048 anchor of
+partition 1; flash-card/verify for when a USB reader is attached — none was,
+so the 256 GB card has NOT been formatted yet).
+
+**Built and verified** (`fpga/rtl/spi_byte_master.sv`, `fpga/rtl/sd_spi_reader.sv`):
+SPI-mode SDHC/SDXC init handshake (375 kHz window → data clock, CMD0/CMD8/
+CMD55+ACMD41(HCS)/CMD58 CCS check, CMD17 blocks-as-LE-words with cycle-budgeted
+timeouts — a 256 GB card is block-addressed). The full top `gate0sd_top.sv`
+boots the card, fills stim/exp/flags from the stream, and runs the unchanged
+Gate-0 machinery. **Cocotb with a modeled card: G0 PASS, fill byte-exact
+(2478 stim words, 21 exp, 21 flags), UART verdict at the right baud** — the
+model caught four real bugs: a reader FSM dead-end state (S_CSW with no exit),
+stale `txi` across frame dispatches (a "frame" of one byte), the slow/fast SCK
+regime flags inverted (`m_slow <= fast`), and an latched request level (the
+fill's read_req was level-held, so the reader over-issued CMD17s). The RTL
+side of the bug-catching discipline keeps paying.
+
+**Synthesis ledger grew two entries**: (1) `synth_gowin` folds runtime-written,
+un-initialized memories into constant stubs (X-init pruning): the earlier
+merged gate0sd synthesized to a 1346-LUT stub with no memories while its RTL
+sim passed; giving every memory a zero `$readmemh` init restored the full
+design (10.9k cells). The transform-era artifacts (duplicate `stim_q` drivers)
+are gone with the clean rewrite. (2) The SD-fed design post-routes at 17.4 MHz
+(< 27 MHz target: 55% LUT, 32 BSRAM + 512 distributed-RAM) — the fabric now
+runs at 13.5 MHz (OSC/2 toggle through BUFG), closing at 23.1 MHz, and the
+UART divisor is retuned (117 @ 13.5 MHz = same 115384 baud). SPI SCK drops to
+6.75 MHz — irrelevant to throughput while the card is the bottleneck.
+
+**Status: flashed to the board.** Card absent → walking-LED blink and
+"G0 SERR" on pin 69; card with the payload → the gate runs from storage and
+the verdict repeats on the pod UART. Throughput ledger: SPI-mode reads ≈
+1.7 MB/s ceiling (SCK ≤ 25 MHz), vs the datapath's ~10 MB/s at 27 MHz — the
+card is the new bottleneck by design; the 4-bit SD upgrade (DAT1/2 on pins
+85/80) is the registered next lever, then the SDRAM streaming stage.
