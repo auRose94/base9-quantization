@@ -31,10 +31,14 @@ module gate0sd_top (
 
   // post-route Fmax of the SD-fed design is ~17 MHz; run the fabric at half
   // the 27 MHz oscillator through a BUFG (26% margin at 13.5 MHz).
-  reg clkdiv = 1'b0;
-  always @(posedge clk) clkdiv <= ~clkdiv;
+  reg [1:0] divc = 2'd0;
+  reg clk13r = 1'b0;
+  always @(posedge clk) begin
+    divc <= divc + 2'd1;
+    if (!divc[0]) clk13r <= ~clk13r;         // toggles every two cycles: /4
+  end
   wire clk13;
-  BUFG u_clkbuf (.I(clkdiv), .O(clk13));
+  BUFG u_clkbuf (.I(clk13r), .O(clk13));
 
   // sim shim: yosys/apicula map this cell to the fabric clock buffer
   `ifdef SIMULATION
@@ -80,7 +84,7 @@ module gate0sd_top (
   reg [6:0]  sd_blkw;                      // word index within block
   reg [5:0]  sd_blk;
   reg [31:0] sd_word;
-  reg [23:0] boot_to;
+  reg [31:0] boot_to;
   reg        card_err, sd_pend;
   reg [3:0]  err_code;       // 0 ok; 1 init; 2 write; 3 verify; 4 watchdog
   reg        sd_done_seen;   // sticky: never miss the reader's init-done pulse       // 0 ok; 1 init; 2 write; 3 verify; 4 watchdog
@@ -240,7 +244,7 @@ module gate0sd_top (
       sd_wr     <= 32'd0;
       sd_blkw   <= 7'd0;
       sd_blk    <= 6'd0;
-      boot_to   <= 24'd0;
+      boot_to   <= 32'd0;
       card_err  <= 1'b0;
       err_code  <= 4'd0;
       sd_pend   <= 1'b0;
@@ -256,7 +260,7 @@ module gate0sd_top (
       if (sd_busy_r && sd_start)              // reader captured the start
         sd_start <= 1'b0;
       case (st)
-        S_SDBOOT: boot_to <= boot_to + 24'd1;
+        S_SDBOOT: boot_to <= boot_to + 32'd1;
         S_SDFILL: begin
           if (sd_busy && sd_pend) begin    // reader captured the read request
             sd_pend <= 1'b0;
@@ -297,8 +301,8 @@ module gate0sd_top (
           st <= S_SDBOOT;
         end
         S_SDBOOT: begin
-          boot_to <= boot_to + 24'd1;
-          if (boot_to >= 24'd810000000) begin  // 30 s watchdog (stuck card)
+          boot_to <= boot_to + 32'd1;
+          if (boot_to >= 32'd202500000) begin  // 30 s watchdog (stuck card)
             card_err <= 1'b1;
             err_code <= 4'd4;
             st <= S_DONE;
@@ -459,8 +463,8 @@ module gate0sd_top (
   //   card errors             -> walking light + binary error code on the
   //                              index LEDs (1 init, 2 write, 3 roundtrip, 4 watchdog)
   reg [23:0] bt = 24'd0;
-  always @(posedge clk13) bt <= (bt == 24'd405000) ? 24'd0 : bt + 24'd1;
-  wire beat_on = (bt < 24'd135000);            // 10 ms lit per 30 ms beat
+  always @(posedge clk13) bt <= (bt == 24'd202500) ? 24'd0 : bt + 24'd1;   // 30 ms beats
+  wire beat_on = (bt < 24'd67500);             // 10 ms lit per 30 ms beat
   reg [3:0]  bcn_i = 4'd0;
   wire [3:0] blinks_tot = 4'(fail_idx + 5'd2);   // every fail blinks >= 2
   always @(posedge clk13) begin
@@ -471,10 +475,10 @@ module gate0sd_top (
 
   wire [5:0] lit_mask =
     card_err ?      (blink | {2'b00, err_code[3:0]}) :
-    st == S_PROV   ? {2'b11, rd_st[3:0]} :   // stuck-write state readable
-    st == S_SDFILL ? {2'b11, rd_st[3:0]} :
-    st == S_SDBOOT ? {2'b11, rd_st[3:0]} :   // init telegraph: reader FSM
-    st == S_BOOT   ? {2'b11, 4'd0} :
+    st == S_PROV   ? rd_st[5:0]:             // FULL state: all six readable
+    st == S_SDFILL ? rd_st[5:0] :
+    st == S_SDBOOT ? rd_st[5:0] :
+    st == S_BOOT   ? 6'b110000 :             // boot: two lights (held-reset look)
     done_flag      ? (fail ? {1'b0, beacon_on, fail_idx[3:0]}
                            : {1'b1, 1'b0, 4'b1111})
                    : {1'b1, 1'b0, sb_idx_r[3:0]};
@@ -483,7 +487,7 @@ module gate0sd_top (
   // ------------------------------------------------------- UART -----------
   logic        u_start, u_busy;
   logic [7:0]  u_data;
-  uart_tx #(.DIV(117)) utx (   // 13.5 MHz / 117 = 115384 baud
+  uart_tx #(.DIV(58)) utx (    // 6.75 MHz / 58 = 116379 baud (+1%)
     .clk(clk13), .rst_n(rst_n),
     .start(u_start), .data(u_data), .tx(txd), .busy(u_busy)
   );
@@ -525,14 +529,14 @@ module gate0sd_top (
   logic [4:0] tx_ptr = 5'd0;
   logic       tx_run = 1'b0;
   logic [1:0] tx_st = 2'd0;
-  reg  [21:0] gap = 22'd0;
+  reg  [23:0] gap = 24'd0;
   wire        done_v = (st == S_DONE) || card_err;
   wire [4:0]  tx_len = done_v ? 5'd17 : 5'd4;
   always @(posedge clk13) begin
     if (!rst_n) begin
-      tx_ptr <= 5'd0; tx_run <= 1'b0; tx_st <= 2'd0; gap <= 22'd0;
+      tx_ptr <= 5'd0; tx_run <= 1'b0; tx_st <= 2'd0; gap <= 24'd0;
     end else if (!tx_run) begin
-      if (gap != 22'd0) gap <= gap - 22'd1;
+      if (gap != 24'd0) gap <= gap - 24'd1;
       else begin
         tx_ptr <= 5'd0; tx_run <= 1'b1; tx_st <= 2'd0;
       end
@@ -541,7 +545,7 @@ module gate0sd_top (
         2'd0: begin
           if (tx_ptr == (done_v ? 5'd17 : 5'd4)) begin
             tx_run <= 1'b0;
-            gap    <= done_v ? 22'h1FFFE : 22'd1350000;
+            gap    <= done_v ? 24'd6750000 : 24'd1350000;   // 1 s verdict / 200 ms trace
           end else begin
             u_start <= 1'b1;
             u_data  <= tx_char(tx_ptr, done_v);

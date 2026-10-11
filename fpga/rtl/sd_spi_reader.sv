@@ -89,10 +89,10 @@ module sd_spi_reader (
 
   always @* frame = {2'b01, cmdsel, arg, crc8};
 
-  localparam integer PSET_CYC    = 27000;    // ~1 ms
-  localparam integer ACMD_BUDGET = 27000000; // ~1 s of slow-clock init
-  localparam integer TOK_BUDGET  = 9000000;  // ~333 ms NAC (reads)
-  localparam integer WR_BUDGET   = 27000000; // ~1 s per phase: SDXC writes can
+  localparam integer PSET_CYC    = 6750;     // ~1 ms at 6.75 MHz
+  localparam integer ACMD_BUDGET = 13500000; // ~2 s of slow-clock init
+  localparam integer TOK_BUDGET  = 6750000;  // ~1 s NAC (reads)
+  localparam integer WR_BUDGET   = 13500000; // ~2 s per phase: SDXC writes can
                                              // sit busy for hundreds of ms
 
   wire bccs = b1[6];       // OCR[31:24] bit 30 after the 4 bytes arrive
