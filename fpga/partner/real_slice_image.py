@@ -46,9 +46,10 @@ sys.path.insert(0, str(REPO / "experiments"))
 sys.path.insert(0, str(REPO / "fpga" / "sim"))
 import k9                            # noqa: E402  (container decoder)
 import ninths_native as nn           # noqa: E402  (Gate-A block packer)
-from golden import b32f, f32b, k96_partials   # noqa: E402  (numpy replica of C kernel)
+from golden import b32f, f32b, k96_partials, k97_partials  # noqa: E402
 
 K9_PATH = REPO / "results" / "qwen_coder_1.5b_k63_embed99.k9"
+SB_TYPE = {"k9_6": 6, "k9_7": 7}
 HARNESS = REPO / "fpga" / "crosscheck" / "k9_c_harness"
 N_REC = 21
 OUT_IMG = HERE / "ninths_sd_real.bin"
@@ -57,11 +58,15 @@ OUT_HEX2 = HERE / "pay_real.hex"   # sim cwd copy (real_top's $readmemh resolves
 OUT_NPZ = Path("/tmp/gate0_real_vecs.npz")
 
 # Each chain = one real fp32 dot product (row * h) of the real model.
-PLAN = [("l0", "model.layers.0.self_attn.o_proj", 0, 6),
-        ("l1", "model.layers.1.self_attn.o_proj", 0, 6),
-        ("l2", "model.layers.2.self_attn.o_proj", 0, 6),
-        ("l0b", "model.layers.0.self_attn.o_proj", 1, 3)]
-assert sum(n for *_, n in PLAN) == N_REC
+PLAN_K9_6 = [("l0", "model.layers.0.self_attn.o_proj", 0, 6),
+             ("l1", "model.layers.1.self_attn.o_proj", 0, 6),
+             ("l2", "model.layers.2.self_attn.o_proj", 0, 6),
+             ("l0b", "model.layers.0.self_attn.o_proj", 1, 3)]
+# k9_7 records: the 1.5B is tied-embed, so __embed__ rows ARE the unembed;
+# each chain = one real logit-class dot product row(0|1) · h.
+PLAN_K9_7 = [("u0", "__embed__", 0, 6),
+             ("u1", "__embed__", 1, 6)]
+assert sum(n for *_, n in PLAN_K9_6) == N_REC
 
 
 def q8_0_blocks(x):
@@ -82,12 +87,13 @@ def q8_0_blocks(x):
     return out
 
 
-def decode_record(k9f, name, cache):
+def decode_record(k9f, name, cache, kind="k9_6"):
     """Decode one .k9 tensor: (digits (r,c), scales f32 (r, c//64), k)."""
     if name in cache:
         return cache[name]
     rec = k9f.record(name)
-    assert rec["k"] <= nn.MAX_K["k9_6"], f"{name}: k={rec['k']} > K9_6"
+    cap = nn.MAX_K["k9_6"] if kind == "k9_6" else nn.MAX_K["k9_7"]
+    assert rec["k"] <= cap, f"{name}: k={rec['k']} > {kind}"
     assert rec["perm"] is None, f"{name}: permuted (GPTQ act-order) container"
     r, c = rec["shape"]
     g = rec["group"]
@@ -112,24 +118,26 @@ def embd_row(k9f, tok):
     return (s * d.astype(np.float32)).astype(np.float32)
 
 
-def build_records(k9f, act_h):
+def build_records(k9f, act_h, plan, kind):
     """PLAN case ids are strings; the npz/image protocol wants integer case ids
     (the tb/crosscheck convention), names keep living in the meta string."""
     recs, table = [], []
     cache = {}
-    for pi, (case_id, name, row, n_sb) in enumerate(PLAN):
-        dig, sc, k = decode_record(k9f, name, cache)
-        blob = nn.pack(dig[row:row + 1], k, sc[row:row + 1]).reshape(-1, 200)
+    for pi, (case_id, name, row, n_sb) in enumerate(plan):
+        dig, sc, k = decode_record(k9f, name, cache, kind)
+        nb = nn.BLOCK_BYTES[nn.type_for_k(k)]
+        blob = nn.pack(dig[row:row + 1], k, sc[row:row + 1]).reshape(-1)
         for j in range(n_sb):
             a0, a1 = 256 * j, 256 * (j + 1)
             acts = q8_0_blocks(act_h[a0:a1])
-            recs.append({"case": pi, "wblk": blob[j], "act": acts})
+            recs.append({"case": pi, "wblk": blob[nb * j: nb * (j + 1)], "act": acts})
             table.append((len(recs) - 1, pi, name, row, j))
     return recs, table
 
 
-def gold_and_crosscheck(recs):
-    """Three-level bit-exact closure.
+def gold_and_crosscheck(recs, kind="k9_6"):
+    """Three-level bit-exact closure (partials replica + harness type are
+    kind-aware: k9_6 = 200 B/type-6, k9_7 = 264 B/type-7 kernels).
 
     1. per-CALL: numpy singleton partial (k96_partials over ONE superblock =
        the fork kernel's exact per-call semantics) must equal the C harness
@@ -156,8 +164,8 @@ def gold_and_crosscheck(recs):
             wblk = bytes(recs[i]["wblk"])
             acts = recs[i]["act"]
             # level 1: python singleton == C singleton
-            one_np, _ = k96_partials([wblk], acts)
-            inb = (6).to_bytes(4, "little") + (1).to_bytes(4, "little") \
+            one_np, _ = _replica(kind)([wblk], acts)
+            inb = (SB_TYPE[kind]).to_bytes(4, "little") + (1).to_bytes(4, "little") \
                 + wblk + b"".join(acts)
             fin, fout = HERE / f"_real_single_{i}.bin", HERE / f"_real_single_out_{i}.bin"
             fin.write_bytes(inb)
@@ -173,8 +181,9 @@ def gold_and_crosscheck(recs):
         # level 2: row kernel over the whole chain, python vs verbatim C
         wblks = [bytes(recs[i]["wblk"]) for i in idxs]
         acts = [b for i in idxs for b in recs[i]["act"]]
-        cums_row, final = k96_partials(wblks, acts)
-        inb = (6).to_bytes(4, "little") + len(idxs).to_bytes(4, "little")
+        one_r = _replica(kind)
+        cums_row, final = one_r(wblks, acts)
+        inb = (SB_TYPE[kind]).to_bytes(4, "little") + len(idxs).to_bytes(4, "little")
         inb += b"".join(wblks) + b"".join(acts)
         fin, fout = HERE / f"_real_row{cid}.bin", HERE / f"_real_row_out{cid}.bin"
         fin.write_bytes(inb)
@@ -187,6 +196,10 @@ def gold_and_crosscheck(recs):
         print(f"  case {cid}: singleton+row closures bit-exact, "
               f"row-final {final:#010x} ({val:+.6f})")
     return cums_all
+
+
+def _replica(kind):
+    return k97_partials if kind == "k9_7" else k96_partials
 
 
 def assemble_image(recs, cums):
@@ -209,7 +222,25 @@ def assemble_image(recs, cums):
     return bytes(buf) + bytes(20 * 512 - len(buf)), flags
 
 
-def write_outputs(payload, recs, cums, table, act_desc):
+NPZ_PATHS = {"k9_6": Path("/tmp/gate0_real_vecs.npz"), "k9_7": Path("/tmp/gate0_k97_real_vecs.npz")}
+
+
+def write_outputs(payload, recs, cums, table, act_desc, kind):
+    if kind == "k9_7":
+        # k97 has no card image/top yet: npz only (sim tb_k97 consumes it)
+        npz = NPZ_PATHS[kind]
+        d = {"rec_meta": np.frombuffer(
+            "; ".join(f"rec{i}:case{c}:{name}:row{row}+sb{j}"
+                      for i, (_, c, name, row, j) in enumerate(table)).encode(), np.uint8)}
+        for i, r in enumerate(recs):
+            d[f"rec{i}_wblk"] = np.asarray(r["wblk"], np.uint8)
+            d[f"rec{i}_act"] = np.frombuffer(b"".join(r["act"]), np.uint8)
+            d[f"rec{i}_gold"] = cums[i]
+            d[f"rec{i}_case"] = r["case"]
+        np.savez(npz, **d)
+        print(f"wrote {npz} ({len(recs)} records)")
+        return
+    OUT_IMG.write_bytes(payload)
     OUT_IMG.write_bytes(payload)
     words_txt = "\n".join(
         "%08X" % int.from_bytes(payload[4 * j:4 * j + 4], "little")
@@ -224,13 +255,17 @@ def write_outputs(payload, recs, cums, table, act_desc):
         d[f"rec{i}_act"] = np.frombuffer(b"".join(r["act"]), np.uint8)
         d[f"rec{i}_gold"] = cums[i]
         d[f"rec{i}_case"] = r["case"]
-    np.savez(OUT_NPZ, **d)
-    print(f"wrote {OUT_IMG.name} ({len(payload)} B), {OUT_HEX.name}, {OUT_NPZ}")
+    np.savez(NPZ_PATHS[kind], **d)
+    print(f"wrote {OUT_IMG.name} ({len(payload)} B), {OUT_HEX.name}, {NPZ_PATHS[kind]}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--k9", type=Path, default=K9_PATH)
+    ap.add_argument("--kind", choices=["k9_6", "k9_7"], default="k9_6",
+                    help="container kind: k9_6 = the 200-B gate image "
+                         "(o_proj plan), k9_7 = 264-B npz only for sim "
+                         "(__embed__ row plan: the tied unembed)")
     ap.add_argument("--act", default="embd:2048",
                     help="h source: 'embd:TOK' = the __embed__ record's row "
                          "TOK decoded from --k9 (runtime fp16-scale chain), or "
@@ -245,22 +280,27 @@ def main():
         assert spec[0] == "embd" and spec[1].lstrip("-").isdigit(), args.act
         h = None
 
+    plan = PLAN_K9_6 if args.kind == "k9_6" else PLAN_K9_7
+    n_rec_plan = sum(n for *_, n in plan)
     with k9.K9File(str(args.k9)) as k9f:
         if h is None:
             tok = int(spec[1])
             h = embd_row(k9f, tok)
             act_desc = f"embd row (runtime chain) of token {tok}"
         assert h.shape == (1536,), h.shape
-        recs, table = build_records(k9f, h)
-        cums = gold_and_crosscheck(recs)
-        payload, flags = assemble_image(recs, cums)
-        write_outputs(payload, recs, cums, table, act_desc)
+        recs, table = build_records(k9f, h, plan, args.kind)
+        cums = gold_and_crosscheck(recs, args.kind)
+        if args.kind == "k9_6":
+            payload, flags = assemble_image(recs, cums)
+            write_outputs(payload, recs, cums, table, act_desc, args.kind)
+        else:
+            write_outputs(None, recs, cums, table, act_desc, args.kind)
 
     print("\nmodel container:", args.k9.name)
     print("activation h:", act_desc, "(1536-dim, Q8_0 per 32-block)")
-    print("plan (each chain = one real fp32 dot product: 6+6+6+3 = "
-          f"{sum(n for *_, n in PLAN)} records):")
-    for case, name, row, n_sb in PLAN:
+    print(f"plan ({args.kind}; each chain = one real fp32 dot product, "
+          f"{n_rec_plan} records):")
+    for case, name, row, n_sb in plan:
         print(f"  case '{case}': {name} row {row} x {n_sb} superblocks")
     print("\nFPGA expectation: boot -> card path -> run -> 'G0 PASS' + 5 lit LEDs")
     print("(led[5] + all four index LEDs lit, led[4] dark -- same telegraph as "

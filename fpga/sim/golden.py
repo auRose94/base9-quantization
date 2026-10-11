@@ -59,6 +59,34 @@ def k96_partials(wblks, act_blocks):
     return cums, f32b(sumf)
 
 
+def k97_partials(wblks, act_blocks):
+    """Bit-exact replication of ggml_vec_dot_k9_7_q8_0_generic: same
+    accumulation tree as the k9_6 replica, but the weight codes are plain
+    signed int8 bytes (d − H, H = 49 for the k99 grid) in one contiguous
+    stream — no lb/hh split; block boundary check: superblock = 8 B scales +
+    256 code bytes."""
+    sumf = np.float32(0.0)
+    cums = []
+    for i, wblk in enumerate(wblks):
+        w = np.frombuffer(wblk, dtype=np.uint8)
+        sc = w[:8].view("<f2").astype(np.float32)
+        for g in range(4):
+            d0 = sc[g]
+            csg = np.frombuffer(w, np.uint8, offset=8 + 64 * g, count=64).view(np.int8)
+            sumi = np.float32(0.0)
+            for k in (0, 1):
+                yb = np.frombuffer(act_blocks[8 * i + 2 * g + k], dtype=np.uint8)
+                d1 = yb[:2].view("<f2").astype(np.float32)[0]
+                qy = yb[2:34].view(np.int8)
+                sblk = 0
+                for b in range(32):
+                    sblk += int(csg[32 * k + b]) * int(qy[b])
+                sumi = np.float32(sumi + np.float32(d1) * np.float32(sblk))
+            sumf = np.float32(sumf + d0 * sumi)
+        cums.append(f32b(sumf))
+    return cums, f32b(sumf)
+
+
 # ------------------------------------------------------------- vector gen ----
 def gen_superblocks(rng, count, k=63, m=None):
     """Random weight superblocks via the Gate-A packer; m overrides scales."""
@@ -66,7 +94,8 @@ def gen_superblocks(rng, count, k=63, m=None):
         m = (10.0 ** rng.uniform(-5, 1.0, (count, 4))).astype(np.float32)
     d = rng.integers(0, k, (count, 256)).astype(np.uint8)
     blob = nn.pack(d, k, m)
-    return [bytes(b) for b in blob.reshape(count, 200)]
+    nb = nn.BLOCK_BYTES[nn.type_for_k(int(k))]
+    return [bytes(b) for b in blob.reshape(count, nb)]
 
 
 def gen_act_blocks(rng, count, d16=None, codes=None):
