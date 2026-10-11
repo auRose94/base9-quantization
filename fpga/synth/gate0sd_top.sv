@@ -86,6 +86,7 @@ module gate0sd_top (
 
   wire [31:0] sd_word_r, sd_wdata;
   wire        sd_word_v_r, sd_rd_done_r, sd_done_r, sd_error_r, sd_busy_r;
+  wire [5:0]  rd_st;
   wire        sd_wdata_req;
   reg        sd_wpend;                   // write request pending (level)
   reg [11:0] pay_a;                      // payload read address (shared)
@@ -100,7 +101,8 @@ module gate0sd_top (
     .start(sd_start), .read_req(sd_pend), .write_req(sd_wpend), .lba(sd_lba),
     .wdata_req(sd_wdata_req), .wdata(sd_wdata),
     .busy(sd_busy_r), .done(sd_done_r), .error(sd_error_r),
-    .word_valid(sd_word_v_r), .word_out(sd_word_r), .rd_done(sd_rd_done_r)
+    .word_valid(sd_word_v_r), .word_out(sd_word_r), .rd_done(sd_rd_done_r),
+    .dbg_st(rd_st)
   );
 
   assign sd_wdata = pay_q;   // written-word stream (stable 4 exchanges)
@@ -291,7 +293,7 @@ module gate0sd_top (
         end
         S_SDBOOT: begin
           boot_to <= boot_to + 24'd1;
-          if (boot_to >= 24'd16777215) begin   // ~10 min watchdog
+          if (boot_to >= 24'd810000000) begin  // 30 s watchdog (stuck card)
             card_err <= 1'b1;
             err_code <= 4'd4;
             st <= S_DONE;
@@ -438,29 +440,44 @@ module gate0sd_top (
       end
     end
   end
-  wire [3:0] led_lo = (st == S_PROV) ? prov_blk[3:0] :
-               (done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0]);
-  wire led_hi_run = (st == S_PROV);
-  // board LEDs are ACTIVE-LOW (LiteX names them led_n): pads drive low = lit.
-  // internal lit-mask (1 = LED lit):
-  //   card_err  -> walking single blink
-  //   provision -> prov_blk binary on the 4 index LEDs, led[5] runs
-  //   running   -> binary record index, led[5] runs
-  //   G0 PASS   -> five lit, led[4] dark
-  //   G0 FAIL   -> led[4] lit + failing record index
+  // LED telegraph (pads ACTIVE-LOW: 1 in lit_mask = LED lit):
+  //   boot / provision / fill -> led[5], led[4] lit + the four index LEDs
+  //                              show WHERE the card path is: reader FSM
+  //                              state nibble (init), provisioned-block or
+  //                              streamed-block index
+  //   gate run                -> led[5] lit, led[4] dark, index = record
+  //   G0 PASS                 -> led[5] + four index LEDs lit (5 lit)
+  //   G0 FAIL                 -> led[5] blinks (fail_idx+2) slowly, the four
+  //                              index LEDs hold the failing record
+  //   card errors             -> walking light + binary error code on the
+  //                              index LEDs (1 init, 2 write, 3 roundtrip, 4 watchdog)
+  reg [23:0] bt = 24'd0;
+  always @(posedge clk13) bt <= (bt == 24'd405000) ? 24'd0 : bt + 24'd1;
+  wire beat_on = (bt < 24'd135000);            // 10 ms lit per 30 ms beat
+  reg [3:0]  bcn_i = 4'd0;
+  wire [3:0] blinks_tot = 4'(fail_idx + 5'd2);  // every fail blinks >= 2
+  always @(posedge clk13) begin
+    if (st != S_DONE || !fail) bcn_i <= 4'd0;
+    else if (bt == 24'd0) bcn_i <= bcn_i + 4'd1;
+  end
+  wire beacon_on = done_flag && fail && (bcn_i < blinks_tot) && beat_on;
+
   wire [5:0] lit_mask =
-    card_err ? (blink | {2'b00, err_code[3:0]}) :   // walker + error code
-    {fail ? 1'b0 : 1'b1,                       // led[5]: run/pass on, fail off
-     done_flag && fail,                        // led[4]: fail marker
-     st == S_PROV ? prov_blk[3:0] :            // provisioning progress
-     (done_flag ? (fail ? fail_idx[3:0] : 4'b1111) : sb_idx_r[3:0])};
+    card_err ?      (blink | {2'b00, err_code[3:0]}) :
+    st == S_PROV   ? {2'b11, prov_blk[3:0]} :
+    st == S_SDFILL ? {2'b11, sd_blk[3:0]} :
+    st == S_SDBOOT ? {2'b11, rd_st[3:0]} :   // init telegraph: reader FSM
+    st == S_BOOT   ? {2'b11, 4'd0} :
+    done_flag      ? (fail ? {1'b0, beacon_on, fail_idx[3:0]}
+                           : {1'b1, 1'b0, 4'b1111})
+                   : {1'b1, 1'b0, sb_idx_r[3:0]};
   assign led = ~lit_mask;
 
   // ------------------------------------------------------- UART -----------
   logic        u_start, u_busy;
   logic [7:0]  u_data;
   uart_tx #(.DIV(117)) utx (   // 13.5 MHz / 117 = 115384 baud
-    .clk(clk), .rst_n(rst_n),
+    .clk(clk13), .rst_n(rst_n),
     .start(u_start), .data(u_data), .tx(txd), .busy(u_busy)
   );
 

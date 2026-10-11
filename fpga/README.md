@@ -75,10 +75,13 @@ cheap streaming decode pipeline is a real serving path.
       LEDs are ACTIVE-LOW (LiteX names them led_n): pads inverted; visuals —
       card-error = a walking light plus the four index LEDs showing a binary
       error code (1 = card init failed, 2 = a write failed, 3 = the write/
-      readback roundtrip mismatched, 4 = watchdog); provisioning/run =
-      led[5] on with the progress index on the four index LEDs; **G0 PASS =
-      led[5] lit + all four index LEDs lit, led[4] dark; G0 FAIL = led[4]
-      lit + the failing record index** (see gate0sd_top lit_mask). SDXC
+      readback roundtrip mismatched, 4 = watchdog); boot/provision/fill =
+      led[5]+led[4] lit and the index LEDs show WHERE the card path is
+      (reader FSM state nibble during init, block index during provision/
+      fill — a frozen boot reads off exactly which state stuck); **G0 PASS =
+      led[5] lit + all four index LEDs lit (five lit, led[4] dark); G0 FAIL
+      = led[5] blinking (fail_idx+2) with the index LEDs holding the failing
+      record** — countable with no tools. SDXC
       write-busy budget widened to ~1 s/phase (WR_BUDGET) — a real card can
       sit busy far past a 333 ms NAC budget. Also fix: `openFPGALoader`
       writes flash via `-f`, there is no `--flash` flag.

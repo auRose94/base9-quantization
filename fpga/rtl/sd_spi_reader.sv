@@ -37,7 +37,8 @@ module sd_spi_reader (
   // block stream
   output reg         word_valid,
   output reg [31:0]  word_out,
-  output reg         rd_done
+  output reg         rd_done,
+  output wire [5:0]  dbg_st       // debug telegraph: FSM state
 );
   // ---------------- byte master ----------------
   reg        m_go, m_slow;
@@ -434,4 +435,5 @@ module sd_spi_reader (
       endcase
     end
   end
+  assign dbg_st = st;
 endmodule

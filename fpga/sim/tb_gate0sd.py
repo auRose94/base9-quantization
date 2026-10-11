@@ -28,7 +28,7 @@ from cocotb.triggers import RisingEdge
 
 os.chdir(Path(__file__).resolve().parents[1] / "partner")  # card image CWD
 
-BIT_CYCLES = 117  # 13.5 MHz fabric / DIV 117 = 115384 baud
+BIT_CYCLES = 234  # 117 clk13 cycles = 234 clk pin cycles per tx bit
 BASE_LBA = 2048
 N_BLOCKS = 20
 LBA = 512
