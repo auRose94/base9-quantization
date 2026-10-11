@@ -96,8 +96,12 @@ cheap streaming decode pipeline is a real serving path.
 
 ## Board notes (Tang Nano 20K)
 
-- Pins (per apicula examples CST, authoritative): clk = pin 4 @ 27 MHz,
-  LEDs = 15,16,17,18,19,20, BL616 USB-C UART TXD/RXD = 69/70, reset btn = 88.
+- Pins (apicula CST + official datasheet v1.3, cross-checked with LiteX's
+  sipeed_tang_nano_20k): clk = pin 4 @ 27 MHz (on-board OSC), LEDs =
+  15..20 = LED0..LED5 (6 discrete, next to button S1), BL616 USB-C UART
+  TXD/RXD = 69/70, user buttons S1/S2 = pins 87/88 (both plain GPIOs; the
+  small button near the flash is UPDATE = hardware reconfig, unused here).
+  Reset polarity: we use pin 88 as active-low reset with pull-up.
 - The device is `GW2AR-LV18QN88C8/I7` (nextpnr) with `--vopt family=GW2A-18C`;
   `gowin_pack -d GW2A-18C` packs the routed JSON (no `--textcfg` on this
   nextpnr — post-route JSON goes straight into the packer).
