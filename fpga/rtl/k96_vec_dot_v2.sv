@@ -60,7 +60,7 @@ module k96_vec_dot_v2 (
     rr = t % 32;
     kk = rr / 16;
     bb = rr % 16;
-    c0 = 32 * kk + 2 * bb;               // first code index of the pair in block j
+    c0 = (kk << 5) + (bb << 1);          // first code index of the pair in block j
     ay0_w = $signed(adata0[7:0]);
     ay1_w = $signed(adata0[15:8]);
     cp0_w = $signed({2'b00, wdata1[((c0 & 3) * 2) +: 2], wdata0[3:0]}) - 32;
@@ -78,14 +78,14 @@ module k96_vec_dot_v2 (
     int gg, rrr, kkk, bbb;
     begin
       gg = tt / 32; rrr = tt % 32; kkk = rrr / 16; bbb = rrr % 16;
-      hh_of = 8'(136 + 16*gg + 8*kkk + (bbb >> 1));
+      hh_of = 8'(136 + (gg << 4) + (kkk << 3) + (bbb >> 1));
     end
   endfunction
   function automatic logic [8:0] ay_of(input int tt);
     int gg, rrr, kkk, bbb;
     begin
       gg = tt / 32; rrr = tt % 32; kkk = rrr / 16; bbb = rrr % 16;
-      ay_of = 9'(68*gg + 34*kkk + 2 + 2*bbb);
+      ay_of = 9'((gg << 6) + (gg << 2) + (kkk << 5) + (kkk << 1) + 2 + (bbb << 1));
     end
   endfunction
 

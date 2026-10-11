@@ -162,8 +162,13 @@ package f32_pkg;
           else              mag = '0;
           canceled = (mag == '0);
           if (!canceled) begin
-            p = 0;                          // index of the highest set bit (MSB scan)
-            for (int i = 47; i >= 0; i--) if (mag[i] && p == 0) p = i;
+            // MSB scan, ascending: the last set bit wins, so p is the MSB
+            // index. Never gate p's update on p itself -- a self-referenced
+            // condition synthesizes into a latch under yosys (silicon/sim
+            // divergence caught on the Tang: the netlist failed where the
+            // RTL sim passed). p == 0 iff mag == 0, same as before.
+            p = 0;
+            for (int i = 0; i < 48; i++) if (mag[i]) p = i;
             sh = 47 - p;
             mag = mag << sh;               // vacated bits are exact zeros
             er = int'(e_big) - sh;

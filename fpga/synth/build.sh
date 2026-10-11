@@ -19,7 +19,10 @@ else
   RTL="uart_tx.sv"
 fi
 
-yosys -ql gate_synth.log -p "read_verilog -sv $RTL; synth_gowin -top $TARGET -json gate.json -family gw2a"
+# -nodsp: yosys maps the fp32 datapath's mantissa products onto the Gowin DSP
+# macros with operand/enable ties that do not behave like the RTL on silicon
+# (the S2-hold gate-FAIL trace); -nobram/-nolutram are NOT set (BRAM is fine).
+yosys -ql gate_synth.log -p "read_verilog -sv $RTL; synth_gowin -top $TARGET -json gate.json -family gw2a -nodsp"
 nextpnr-himbaechel --json gate.json --device GW2AR-LV18QN88C8/I7 \
   --vopt family=GW2A-18C --vopt cst=board.cst --freq 13 --write gate_pnr.json
 gowin_pack -c -d GW2A-18C -o $TARGET.fs gate_pnr.json

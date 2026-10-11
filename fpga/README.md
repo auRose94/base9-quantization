@@ -116,6 +116,20 @@ cheap streaming decode pipeline is a real serving path.
 - Host-side UART without ttyUSB group perms: pyusb + FTDI CH-B (baud divisor
   25 → 3 MHz/26 = 115384 baud, identical to the FPGA's 27e6/234).
 
+**Silicon-vs-sim divergences (the debugging that matters, session 29):**
+1. **The fp32 datapath breaks if synthesized to DSP** — yosys's gowin flow
+   maps `*` onto the Gowin DSP macro with the pipeline/enable/operand-select
+   ports tied to whatever net was free; the real DSP's operand-flapping
+   diverges from any RTL sim (the gate failed its FIRST record on silicon
+   while every RTL sim passed). **Build with `synth_gowin -nodsp`; const
+   multiplies were rewritten as shifts.** Verifiable by netlist simulation
+   (yosys `write_verilog` + verilator over `share/yosys/gowin/cells_sim.v`
+   + `fpga/sim/gowin_sim_stubs.sv`).
+2. **Runtime-written memories need an explicit zero `$readmemh` init** or
+   synth_gowin's memory opt keeps/loses them differently than the RTL.
+3. Self-gated loop conditions (`if (mag[i] && p == 0)`) — write loops as
+   unconditional ascending scans instead.
+
 ## Gotchas ledger (add on every new catch)
 
 - Package imports: yosys accepts `import f32_pkg::*` at file scope but NOT in

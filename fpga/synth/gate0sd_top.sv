@@ -146,6 +146,7 @@ module gate0sd_top (
   reg        a_sel0;
   reg [7:0]  cp_cnt = 8'd0;    // copy counter; slot c-1, c == 0 warm-up
   reg [4:0]  sb_idx_r = 5'd0;
+  wire [4:0] nb = sb_idx_r + 5'd1;                 // next record index
 
   always @(posedge clk13) begin
     wm_q0 <= wm[waddr0[7:2]]; wm_sel0 <= waddr0[1:0];
@@ -266,7 +267,7 @@ module gate0sd_top (
           if (sd_busy && sd_wpend) begin   // reader captured the write request
             sd_wpend <= 1'b0;
             sd_lba   <= sd_lba + 32'd1;
-            wpay     <= 12'(32'(prov_blk) * 32'd128);   // block k starts at k*128
+            wpay     <= 12'(32'(prov_blk << 7));        // block k starts at k*128
           end
           if (sd_wdata_req) begin          // caller side of the write stream
             pay_q <= pay[wpay];
@@ -363,7 +364,7 @@ module gate0sd_top (
                   flags_mem[5'(sd_blkw - 7'd67)] <= sd_word[0];
               end
               default:
-                stim[12'(32'(sd_blk) * 32'd128 + 32'(sd_blkw))] <= sd_word;
+                stim[12'(32'(sd_blk << 7) + 32'(sd_blkw))] <= sd_word;
             endcase
             sd_wr   <= sd_wr + 32'd1;
             sd_blkw <= (sd_blkw == 7'd127) ? 7'd0 : (sd_blkw + 7'd1);
@@ -392,7 +393,8 @@ module gate0sd_top (
             cs_r  <= flags_q;
             st <= S_RUNA;
           end else begin
-            rd_addr  <= 12'(32'(sb_idx_r) * W_PER_REC + 32'(cp_cnt) + 32'd1);
+            rd_addr  <= 12'(32'(((32'(sb_idx_r) << 7) - (32'(sb_idx_r) << 3) - (32'(sb_idx_r) << 1))
+                            + 32'(cp_cnt) + 32'd1));
             cp_cnt <= cp_cnt + 8'd1;
           end
         end
@@ -419,7 +421,7 @@ module gate0sd_top (
             end else begin
               sb_idx_r <= sb_idx_r + 5'd1;
               exp_addr <= 5'(sb_idx_r) + 5'd1;
-              rd_addr  <= 12'(32'(sb_idx_r + 5'd1) * W_PER_REC);
+              rd_addr  <= 12'(32'(((32'(nb) << 7) - (32'(nb) << 3) - (32'(nb) << 1))));
               cp_cnt   <= 8'd0;
               st <= S_LOAD;
             end
@@ -460,7 +462,7 @@ module gate0sd_top (
   always @(posedge clk13) bt <= (bt == 24'd405000) ? 24'd0 : bt + 24'd1;
   wire beat_on = (bt < 24'd135000);            // 10 ms lit per 30 ms beat
   reg [3:0]  bcn_i = 4'd0;
-  wire [3:0] blinks_tot = 4'(fail_idx + 5'd2);  // every fail blinks >= 2
+  wire [3:0] blinks_tot = 4'(fail_idx + 5'd2);   // every fail blinks >= 2
   always @(posedge clk13) begin
     if (st != S_DONE || !fail) bcn_i <= 4'd0;
     else if (bt == 24'd0) bcn_i <= bcn_i + 4'd1;
