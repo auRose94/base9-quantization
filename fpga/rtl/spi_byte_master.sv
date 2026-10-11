@@ -22,7 +22,7 @@ module spi_byte_master (
   localparam integer HALF_SLOW = 36;
   localparam integer HALF_FAST = 1;
 
-  wire [15:0] half = slow ? HALF_SLOW[15:0] : HALF_FAST[15:0];
+  wire [15:0] half = slow ? 16'd36 : 16'd1;
 
   localparam S_IDLE = 3'd0, S_DRIVE = 3'd1, S_HIGH = 3'd2,
              S_SAMPLE = 3'd3, S_FIN = 3'd4;

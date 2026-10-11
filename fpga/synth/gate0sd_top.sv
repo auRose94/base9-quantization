@@ -29,16 +29,16 @@ module gate0sd_top (
   localparam integer W_PER_REC   = 118;  // 50 wblk + 68 act words
   localparam integer SD_BASE_LBA = 2048; // payload partition 1 start
 
-  // post-route Fmax of the SD-fed design is ~17 MHz; run the fabric at half
-  // the 27 MHz oscillator through a BUFG (26% margin at 13.5 MHz).
+  // Fabric clock = 27 MHz / 4 = 6.75 MHz. The cont-8 enabled-toggle (a
+  // separate clk13r FF with CE=!divc[0] feeding the BUFG) produced a DEAD
+  // clk13 on silicon while every sim passed -- proven by the free-running
+  // led probes (fb27 blinked, fb13 did not). Take the fabric clock straight
+  // off the counter's MSB instead: one plain always-active counter FF, no
+  // clock-enable gate, same 6.75 MHz.
   reg [1:0] divc = 2'd0;
-  reg clk13r = 1'b0;
-  always @(posedge clk) begin
-    divc <= divc + 2'd1;
-    if (!divc[0]) clk13r <= ~clk13r;         // toggles every two cycles: /4
-  end
+  always @(posedge clk) divc <= divc + 2'd1;
   wire clk13;
-  BUFG u_clkbuf (.I(clk13r), .O(clk13));
+  BUFG u_clkbuf (.I(divc[1]), .O(clk13));
 
   // sim shim: yosys/apicula map this cell to the fabric clock buffer
   `ifdef SIMULATION

@@ -30,6 +30,9 @@ BIT_CYCLES = 232          # tx bit period in clk-pin cycles (58 clk13 cycles = 4
 BASE_LBA = 2048
 N_BLOCKS = 20
 LBA = 512
+# Real-tensor runs override both (partner/real_slice_image.py emits them):
+IMG  = os.environ.get("NIN_SD_IMG", "ninths_sd.bin")
+NPZ  = os.environ.get("NIN_SD_NPZ", "/tmp/gate0_vecs.npz")
 
 
 class SdCardModel:
@@ -170,7 +173,21 @@ async def gate_from_card(dut):
     dut.rst_b.value = 1
     dut.prov_btn.value = 0            # provisioning key held during boot
 
-    payload = Path("ninths_sd.bin").read_bytes()
+    payload = Path(IMG).read_bytes()
+
+    # real-tensor overlay: the design's embedded payload ($readmemh pay.hex)
+    # is still the synthetic image; when NIN_SD_PAY_POKE is set, write the
+    # override image's words into the pay memory during the 128-cycle power-on
+    # reset (well before provisioning starts). This keeps the sim honest (the
+    # design writes what IT reads) while matching the card payload.
+    if os.environ.get("NIN_SD_PAY_POKE"):
+        while True:
+            await RisingEdge(dut.clk)
+            if int(dut.pwr.value) > 0 and int(dut.pwr.value) < 90:
+                break
+        for i in range(2560):
+            dut.pay[i].value = int.from_bytes(payload[4 * i:4 * i + 4], "little")
+
     model = SdCardModel(dut, payload)
     cocotb.start_soon(model.run())
 
@@ -211,6 +228,34 @@ async def gate_from_card(dut):
     def findings(b):
         return strip_traces(b).find(b"G0 ")
 
+    # per-record debug dump (NIN_SD_DUMP=1): snapshot each record's hardware
+    # partial + chained sumf + expected + fail state at its k_done, so a
+    # real-payload FAIL localizes to the exact record.
+    dump_records = []
+    if os.environ.get("NIN_SD_DUMP"):
+        async def rec_probe():
+            prev_done = 0
+            rec_i = 0
+            while True:
+                await RisingEdge(dut.clk)
+                done = int(dut.k_done.value)
+                if done and not prev_done and not int(dut.k_start.value):
+                    try:
+                        dump_records.append({
+                            "i": rec_i,
+                            "partial": int(dut.k_partial.value) & 0xFFFFFFFF,
+                            "chain": int(dut.sumf.value) & 0xFFFFFFFF,
+                            "chain_next": int(dut.sumf_next.value) & 0xFFFFFFFF,
+                            "exp": int(dut.exp_r.value) & 0xFFFFFFFF,
+                            "cs_r": int(dut.cs_r.value),
+                            "sb_idx": int(dut.sb_idx_r.value),
+                        })
+                    except Exception:
+                        pass
+                    rec_i += 1
+                prev_done = done
+        cocotb.start_soon(rec_probe())
+
     waited = 0
     while (strip := strip_traces(bytes(uarts))).find(b"G0 \r") < 0 \
             and waited < 16_000_000:
@@ -225,6 +270,10 @@ async def gate_from_card(dut):
             except Exception:
                 pass
 
+    if os.environ.get("NIN_SD_DUMP") and dump_records:
+        import json
+        Path(os.environ["NIN_SD_DUMP"]).write_text(
+            json.dumps(dump_records).replace("'", '"'))
     line = bytes(uarts)
     print("writes captured by model:", sorted(model.writes))
     clean = strip_traces(line)
@@ -235,7 +284,7 @@ async def gate_from_card(dut):
     assert len(model.writes) == N_BLOCKS, f"only {len(model.writes)} blocks written"
     assert model.writes == {i: payload[i * LBA:(i + 1) * LBA] for i in range(N_BLOCKS)}, \
         "model-captured writes deviate from the image"
-    npz = np.load("/tmp/gate0_vecs.npz")
+    npz = np.load(NPZ)
     stim_w = []
     for i in range(21):
         blob = bytes(npz[f"rec{i}_wblk"].tobytes()) + bytes(npz[f"rec{i}_act"].tobytes())

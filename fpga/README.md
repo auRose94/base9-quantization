@@ -89,10 +89,76 @@ cheap streaming decode pipeline is a real serving path.
       the SD payload (stim + exp + case-start flags at LBA 2048, 20 blocks);
       flash-card/verify need a USB reader + root (none attached at run time —
       no card was formatted yet; tool ready).
-- [ ] Next rungs: K9_7/K9_4 V2 kernels; format the 256 GB card via the
-      partner tool when a reader is attached; 4-bit SD mode (DAT1/2 = 85/80)
-      for ~5× SPI throughput; fetch/compute overlap + skid buffer; SDRAM
-      streaming stage (the streamed-model ladder's first rung).
+- [x] **REAL TENSORS through the whole gate (session 30)**: the card payload
+      is no longer rng-seeded — `partner/real_slice_image.py` slices REAL
+      K9_6 superblocks out of the SERVED 1.5B coder container
+      (`results/qwen_coder_1.5b_k63_embed99.k9`, k9-decoder digits packed by
+      the Gate-A packer) and crosses them with a real activation h — default
+      = the runtime-chain dequant of the `__embed__` record's row
+      (`--act embd:2048`); `--act file:/tmp/ninths_h.npy` = the fork's
+      `llama-embedding` last-token state of a real prompt, captured through
+      the real loader (`--pooling last`) — a genuine forward-pass hidden
+      state. Plan: 4 chains = self_attn.o_proj rows of layers 0/1/2 (6 sb
+      each) + a 3-sb partial = 21 records. Three-level bit-exact closure
+      before anything is written: (1) per-CALL numpy == verbatim fork C
+      harness on every singleton; (2) row-tree numpy == C harness on every
+      chain; (3) the image's exp = the gate's own chain tree. Full-top sims:
+      synthetic G0 PASS under the corrected exps; real-tensor PASS on BOTH
+      `gate0sd_top` (NIN_SD_IMG/NIN_SD_NPZ/NIN_SD_PAY_POKE envs) and the new
+      `synth/gate0sd_real_top.sv` (embedded `pay_real.hex`, full telegraph,
+      all three silicon fixes, no domain probes). `sim/tb_real96.py` = fast
+      kernel-level probe over any npz (V1 shape) with a cycle meter.
+      **PnR'd both**: `gate0sd_top.fs` rebuilt under the corrected exps (the
+      formal-retest bitstream) and `gate0sd_real_top.fs` = flash-ready;
+      the real-top netlist closes 13.14 MHz at the 7 MHz target (1.9×
+      margin, critical path = the sumf f32 chain — expected).
+- [!] **PROTOCOL FIX found by real data**: the original gate compared the
+      hardware's per-superblock chained sumf against the C ROW-kernel tree
+      (the golden's per-group accumulation interleaved along the chain).
+      Those are DIFFERENT fp32 add trees — they matched on the synthetic
+      vectors only because 18/21 records were singleton chains; real
+      magnitudes diverge by 1-ulp-class. NOT a hardware bug: every per-
+      superblock partial matched the numpy singleton exactly (per-record
+      dump). Protocol now: exp = the chain tree (deterministic IEEE of the
+      exact adds the FPGA runs); the row tree remains the python==C check.
+      Consequence for the formal retest: the payload's exp+flags words
+      changed (42 of 2520), so the post-S1-repair reflash needs one
+      S2-provision boot on the new image (already the reflash plan).
+- [ ] Next rungs: K9_7/K9_4 V2 kernels; 4-bit SD mode (DAT1/2 = 85/80) for
+      4× SPI throughput; fetch/compute overlap + skid buffer; SDRAM streaming
+      stage (the streamed-model ladder's first rung); the full
+      streamed-unembed logits demo (all 151936 logit rows per token = the
+      honest bandwidth datapoint of the whole board class).
+
+## Honest token economics of this device class (2026-10-11, session 30)
+
+Batch-1 decode of entropy-coded weights = every weight streamed once per
+token, so the card lane and the fabric rate cap the token rate together.
+The V2 kernel's schedule costs ~400 cycles per 200-byte superblock plus a
+non-overlapped 118-cycle record load (the skid/overlap rung removes the
+load bubble). The card lane is the real limiter: `spi_byte_master` spends
+~33 clk13 cycles per byte at HALF_FAST=1, so a 1-bit lane ≈ 420 kB/s at the
+measured ~13.4 MHz fabric clock (≈ 210 kB/s at the intended 6.75 MHz) —
+the fabric itself feeds ~3.4–6.3 MB/s depending on the same question, so
+today the card, not the MAC, is the bottleneck by an order of magnitude.
+
+| pass per token (streaming, K9_6) | bytes | 1-bit today (~420 kB/s) | 4-bit, 1.7 MB/s |
+|---|---:|---:|---:|
+| unembed/logits pass only, 1.5B | 182 MB | 7.2 min | 107 s |
+| full model, 1.5B | 1.2 GB | 47 min | 11.8 min |
+| full model, 7B | 5.5 GB | 3.6 h | 54 min |
+| full model, 14B | 11.2 GB | 7.4 h | 1.8 h |
+
+With the planned rungs (4-bit + SD high-speed mode to a ~25 MHz SCK = ~12.5
+MB/s) the fabric becomes the cap: ~3–6 min per token on 1.5B (~0.2 t/s) at
+this chip class, ~29 min on 14B. The 5060 Ti serves the same tuned
+containers at 109 t/s. **So stated plainly: this $15 board (≈0.4 W) is the
+bit-exact validator, protocol substrate and novelty demo for ninths
+containers — not an LLM serving engine; even DDR3-class FPGAs stay
+sub-1 t/s at 7B via streaming. The useful rungs here are exactly what
+shipped: a silicon proof on real container bytes, a real-model logits demo,
+then SDRAM as a working-set cache; the serving-engine tier would be a
+different board class entirely.**
 
 ## Board notes (Tang Nano 20K)
 

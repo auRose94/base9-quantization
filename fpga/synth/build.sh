@@ -13,6 +13,20 @@ source ~/Work/tools/oss-cad-suite/environment
 
 if [ "$TARGET" = "gate0sd_top" ]; then
   RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_top.sv"
+elif [ "$TARGET" = "gate0sd_real_top" ]; then
+  # real-tensor payload variant (partner/real_slice_image.py): regenerate
+  # ninths_sd_real.bin + pay_real.hex with --first if the plan changes;
+  # provisioning via S2-held boot writes the payload to LBA 2048.
+  [ -f pay_real.hex ] || echo "warning: pay_real.hex missing (partner/real_slice_image.py writes it)"
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_real_top.sv"
+elif [ "$TARGET" = "gate0sd_dbg4_top" ]; then
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_dbg4_top.sv"
+elif [ "$TARGET" = "gate0sd_dbg3_top" ]; then
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_dbg3_top.sv"
+elif [ "$TARGET" = "gate0sd_dbg2_top" ]; then
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_dbg2_top.sv"
+elif [ "$TARGET" = "gate0sd_dbg_top" ]; then
+  RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_dbg_top.sv"
 elif [ "$TARGET" = "gate0v2_top" ]; then
   RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv uart_tx.sv gate0v2_top.sv"
 else
@@ -24,6 +38,6 @@ fi
 # (the S2-hold gate-FAIL trace); -nobram/-nolutram are NOT set (BRAM is fine).
 yosys -ql gate_synth.log -p "read_verilog -sv $RTL; synth_gowin -top $TARGET -json gate.json -family gw2a -nodsp"
 nextpnr-himbaechel --json gate.json --device GW2AR-LV18QN88C8/I7 \
-  --vopt family=GW2A-18C --vopt cst=board.cst --freq 13 --write gate_pnr.json
+  --vopt family=GW2A-18C --vopt cst=board.cst --freq 7 --write gate_pnr.json
 gowin_pack -c -d GW2A-18C -o $TARGET.fs gate_pnr.json
 echo "$TARGET.fs written; flash: openFPGALoader --board tangnano20k $TARGET.fs"
