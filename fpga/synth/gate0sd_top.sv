@@ -487,11 +487,26 @@ module gate0sd_top (
   );
 
   // verdict: "G0 PASS"/"G0 FAIL"/"G0 SERR" + 8 hex of cyc + CRLF (17 chars)
+  // trace: a live 4-byte status frame (0x55, phase, reader state, block)
+  // every ~200 ms while the card path is running.
+  wire [3:0] tr_phase = (st == S_SDBOOT) ? 4'd1 :
+                        (st == S_PROV)   ? 4'd2 :
+                        (st == S_SDFILL) ? 4'd3 :
+                        (st == S_BOOT)   ? 4'd0 : ((st == S_LOAD || st == S_RUNA ||
+                                                    st == S_RUNW || st == S_WAIT) ? 4'd4 : 4'd5);
+  wire [7:0] blk_now = (st == S_PROV) ? {2'b00, prov_blk} : {2'b00, sd_blk};
   function [7:0] hexnyb(input [3:0] n);
     hexnyb = (n < 10) ? (8'h30 + {4'b0, n}) : (8'h37 + {4'b0, n});
   endfunction
-  function [7:0] tx_char(input [4:0] p);
-    case (p)
+  function [7:0] tx_char(input [4:0] p, input done_v);
+    if (!done_v) case (p)
+      5'd0: tx_char = 8'h55;                         // sync
+      5'd1: tx_char = {4'd0, tr_phase};
+      5'd2: tx_char = {2'b00, rd_st};
+      5'd3: tx_char = blk_now;
+      default: tx_char = 8'h00;
+    endcase
+    else case (p)
       5'd0: tx_char = "G";
       5'd1: tx_char = "0";
       5'd2: tx_char = " ";
@@ -509,10 +524,12 @@ module gate0sd_top (
   logic       tx_run = 1'b0;
   logic [1:0] tx_st = 2'd0;
   reg  [21:0] gap = 22'd0;
+  wire        done_v = (st == S_DONE) || card_err;
+  wire [4:0]  tx_len = done_v ? 5'd17 : 5'd4;
   always @(posedge clk13) begin
     if (!rst_n) begin
       tx_ptr <= 5'd0; tx_run <= 1'b0; tx_st <= 2'd0; gap <= 22'd0;
-    end else if (st == S_DONE && !tx_run) begin
+    end else if (!tx_run) begin
       if (gap != 22'd0) gap <= gap - 22'd1;
       else begin
         tx_ptr <= 5'd0; tx_run <= 1'b1; tx_st <= 2'd0;
@@ -520,12 +537,12 @@ module gate0sd_top (
     end else if (tx_run) begin
       case (tx_st)
         2'd0: begin
-          if (tx_ptr == 5'd17) begin
+          if (tx_ptr == (done_v ? 5'd17 : 5'd4)) begin
             tx_run <= 1'b0;
-            gap    <= 22'h1FFFE;
+            gap    <= done_v ? 22'h1FFFE : 22'd1350000;
           end else begin
             u_start <= 1'b1;
-            u_data  <= tx_char(tx_ptr);
+            u_data  <= tx_char(tx_ptr, done_v);
             tx_ptr  <= tx_ptr + 5'd1;
             tx_st   <= 2'd1;
           end

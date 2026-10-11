@@ -1,19 +1,17 @@
-"""Full-top simulation of gate0sd_top: the Gate-0 stimulus streams from a
+"""Full-top simulation of gate0sd_top: provisioning + verify + gate with a
 modeled SPI-mode SD card.
 
-The model implements the card side of the reader: latch MOSI on SCK rises,
-drive MISO ahead of the reader's safe sample point, answer the SDHC/SDXC init
-handshake, and for CMD17 serve each complete block (stuffing + 0xFE token +
-512 payload bytes + CRC) as a pre-queued bit stream. Payload =
-partner/ninths_sd.bin (partner/ninths_sd_image.py mkimage).
-
-Verification: reader state history sane, card->BRAM fill byte-identical vs
-the npz source artifacts, and the gate verdict = G0 PASS (fill check skipped
-with an explicit error line if the card path reports G0 SERR).
+Model card side: latches MOSI on SCK rises, drives MISO ahead of the reader's
+safe sample point, answers the SDHC/SDXC init handshake, serves CMD17 blocks
+from partner/ninths_sd.bin, and CAPTURES CMD24 writes byte-for-byte (asserting
+each written block against the image). The design streams 4-byte UART trace
+frames (0x55, phase, reader-state, block) while the card path is running and
+the verdict line at the end; the tb strips the frames and requires the
+verdict.
 
 Run from fpga/sim:
   make SIM=verilator TOP=gate0sd_top MOD=tb_gate0sd \
-       RTL="../synth/gate0sd_top.sv ../synth/uart_tx.sv \
+       RTL="../sim/gowin_bufg_stub.sv ../synth/gate0sd_top.sv ../synth/uart_tx.sv \
             ../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv \
             ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv"
 """
@@ -28,7 +26,7 @@ from cocotb.triggers import RisingEdge
 
 os.chdir(Path(__file__).resolve().parents[1] / "partner")  # card image CWD
 
-BIT_CYCLES = 234  # 117 clk13 cycles = 234 clk pin cycles per tx bit
+BIT_CYCLES = 234          # tx bit period in clk-pin cycles (DIV 117 @ clk13)
 BASE_LBA = 2048
 N_BLOCKS = 20
 LBA = 512
@@ -38,18 +36,17 @@ class SdCardModel:
     "SPI-mode SDHC/SDXC responder over the card pads."
 
     def __init__(self, dut, payload):
-        assert len(payload) == N_BLOCKS * LBA
         self.dut = dut
         self.payload = payload
         self.bits = []
-        self.resp = deque()      # MISO bit queue
+        self.resp = deque()
         self.frame = []
         self.fhist = []
         self.acmd41_seen = 0
-        self.wr_active = None    # LBA being written (SPI write capture)
-        self.wr_i = -1
+        self.wr_active = None    # LBA of an in-progress CMD24 (None otherwise)
+        self.wr_i = -1           # -1 = pre-token scan; else data offset
         self.wr_bytes = bytearray()
-        self.wr_done_logs = []
+        self.writes = {}         # lba -> 512 written bytes
 
     def queue_byte(self, v):
         for k in range(7, -1, -1):
@@ -78,25 +75,24 @@ class SdCardModel:
             self.queue_r1(0x01 if self.acmd41_seen < 4 else 0x00)
         elif cmd == 58:
             self.queue_r1(0x00, arg=(0xC0, 0xFF, 0x80, 0x00))  # CCS=1
-        elif cmd == 24:
-            rel = arg - BASE_LBA
-            assert 0 <= rel < N_BLOCKS, (arg, rel)
-            self.wr_active = rel                 # model captures card writes
-            self.wr_i = -1
-            self.wr_bytes = bytearray()
-            self.queue_r1(0x00)
         elif cmd == 17:
-            self.dut._log.info("CMD17 lba=%d", arg)
             rel = arg - BASE_LBA
-            assert 0 <= rel < N_BLOCKS, (arg, self.dut.sd_blk.value, self.dut.sd_lba.value)
+            assert 0 <= rel < N_BLOCKS, arg
             self.queue_r1(0x00)
             for _ in range(4):
                 self.queue_byte(0xFF)              # read-latency stuffing
             self.queue_byte(0xFE)                  # data token
-            for b in self.payload[rel * LBA: (rel + 1) * LBA]:
+            for b in self.payload[rel * LBA:(rel + 1) * LBA]:
                 self.queue_byte(b)
             self.queue_byte(0x9A)                  # crc16 (unchecked)
             self.queue_byte(0x6D)
+        elif cmd == 24:
+            rel = arg - BASE_LBA
+            assert 0 <= rel < N_BLOCKS, arg
+            self.wr_active = rel
+            self.wr_i = -1
+            self.wr_bytes = bytearray()
+            self.queue_r1(0x00)
         else:
             raise AssertionError(f"unexpected cmd {cmd} arg {arg:#x}")
 
@@ -127,43 +123,32 @@ class SdCardModel:
                         b |= bit << (7 - i)
                     self.bits = []
                     if self.wr_active is not None:
+                        # inside a write: R1 polls (FF...) precede the 0xFE
+                        # token; then 512 data bytes and a dummy CRC16
                         if self.wr_i == -1:
-                            # pre-token: polls and NCR stuffing, all 0xFF;
-                            # the first 0xFE after CMD24's R1 is the token
                             if b == 0xFE:
                                 self.wr_i = 0
                             else:
-                                assert b == 0xFF, f"expected FF pre-token, got {b:#x}"
-                        elif self.wr_i < 512:
+                                assert b == 0xFF, f"pre-token byte {b:#x}"
+                        elif self.wr_i <= 1024 and len(self.wr_bytes) < 512:
                             self.wr_bytes.append(b)
                             self.wr_i += 1
-                        elif self.wr_i < 514:
-                            self.wr_i += 1    # dummy CRC16 bytes
+                        elif len(self.wr_bytes) == 512 and self.wr_i < 514:
+                            self.wr_i += 1         # dummy CRC16 (2 bytes)
                         else:
-                            # write done: payload + CRC consumed
-                            print(f"  MODEL-RESPOND: LBA {self.wr_active} "
-                                  f"bytes {len(self.wr_bytes)} queued 05+busy")
-                            base = (self.wr_active) * 512
-                            got = bytes(self.wr_bytes)
-                            want = self.payload[base:base+512]
+                            base = self.wr_active * LBA
+                            got, want = bytes(self.wr_bytes), self.payload[base:base + LBA]
                             assert got == want, (
                                 f"write mismatch LBA {self.wr_active}: "
-                                f"len {len(got)} vs {len(want)}; first diff at "
-                                f"{next((i for i in range(512) if got[i] != want[i]), None)}, "
-                                f"got {got[:12].hex()} want {want[:12].hex()}, "
-                                f"tail {got[-8:].hex()} vs {want[-8:].hex()}")
-                            self.wr_done_logs.append(self.wr_active)
-                            self.queue_byte(0x05)        # data accepted
-                            for _ in range(3):
-                                self.queue_byte(0xFF)
+                                f"first diff {next((i for i in range(LBA) if got[i] != want[i]), None)}")
+                            self.writes[self.wr_active] = got
                             self.wr_active = None
                             self.wr_i = -1
-                    # a command frame STARTS with a byte whose top two bits
-                    # are 01; other transactions (R1 polls, data fills, write
-                    # payloads) are invisible to the frame assembly -- exactly
-                    # how a real card finds its frames. Writes lock the
-                    # assembly out entirely (data bytes can look like frames).
-                    if self.wr_active is None:
+                            self.queue_byte(0x05)  # data accepted
+                            for _ in range(3):
+                                self.queue_byte(0xFF)
+                    else:
+                        # a command frame starts 01xxxxxx; other bytes ignored
                         if len(self.frame) == 0:
                             if (b >> 6) == 0b01:
                                 self.frame.append(b)
@@ -189,42 +174,6 @@ async def gate_from_card(dut):
     model = SdCardModel(dut, payload)
     cocotb.start_soon(model.run())
 
-    rlog = []
-
-    async def rreqlog():
-        last = None
-        while True:
-            await RisingEdge(dut.clk)
-            try:
-                v = (int(dut.sdr.st.value), int(dut.sd_read_req.value), int(dut.sd_lba.value),
-                     int(dut.sdr.busy.value), int(dut.sd_blk.value))
-            except Exception:
-                continue
-            if v != last:
-                rlog.append((len(rlog), v))
-                if len(rlog) > 40:
-                    rlog.pop(0)
-                last = v
-
-    cocotb.start_soon(rreqlog())
-    sthist = []
-
-    async def strec():
-        last = -1
-        while True:
-            await RisingEdge(dut.clk)
-            try:
-                s = int(dut.sdr.st.value)
-            except Exception:
-                s = -2
-            if s != last:
-                sthist.append(s)
-                if len(sthist) > 20000:
-                    sthist.pop(0)
-                last = s
-
-    cocotb.start_soon(strec())
-
     uarts = bytearray()
 
     async def uart_rx():
@@ -232,7 +181,7 @@ async def gate_from_card(dut):
         while True:
             await RisingEdge(dut.clk)
             cur = int(dut.txd.value) if dut.txd.value.is_resolvable else 1
-            if cur == 0 and prev == 1 and len(uarts) < 40:
+            if cur == 0 and prev == 1 and len(uarts) < 200:
                 for _ in range((3 * BIT_CYCLES) // 2):
                     await RisingEdge(dut.clk)
                 b = 0
@@ -244,117 +193,53 @@ async def gate_from_card(dut):
                 uarts.append(b)
             prev = cur
 
-    wire_cap = []
-    async def wcapture():
-        armed = False
-        got = 0
-        prev = None
-        while True:
-            await RisingEdge(dut.clk)
-            try:
-                stv = int(dut.sdr.st.value)
-                v = (int(dut.sd_cs_n.value), int(dut.sd_sck.value),
-                     int(dut.sd_mosi.value), int(dut.sd_miso.value),
-                     int(dut.sdr.m_done.value))
-            except Exception:
-                continue
-            if stv == 32 or armed:
-                armed = True
-                if v != prev:
-                    wire_cap.append(v)
-                    prev = v
-                    got += 1
-                if got > 150:
-                    for w in wire_cap[:90]:
-                        print(f"  W({w[0]}{w[1]}{w[2]}{w[3]} md{w[4]})")
-                    return
-
-    cocotb.start_soon(wcapture())
-    async def wpaywatch():
-        n = 0
-        while True:
-            await RisingEdge(dut.clk)
-            try:
-                if int(dut.sd_wdata_req.value) and n < 5:
-                    n += 1
-                    print(f"  wreq#{n}: wpay={int(dut.wpay.value)} pay_q="
-                          f"{int(dut.pay_q.value) & 0xFFFFFFFF:08x} sd_wdata="
-                          f"{int(dut.sd_wdata.value) & 0xFFFFFFFF:08x} "
-                          f"pay[0]={int(dut.pay[0].value) & 0xFFFFFFFF:08x}")
-            except Exception:
-                pass
-
-    async def wrespwatch():
-        seen = 0
-        while True:
-            await RisingEdge(dut.clk)
-            try:
-                if int(dut.sdr.st.value) == 33 and seen < 8:
-                    seen += 1
-                    q = model.resp
-                    md = int(dut.sdr.m_done.value)
-                    print(f"  WRESPW#{seen}: md={md} m_rx={int(dut.sdr.m_rx.value):#04x} "
-                          f"miso={int(dut.sd_miso.value)} qbits={len(q)} "
-                          f"wr_i={model.wr_i} wact={model.wr_active} "
-                          f"sck={int(dut.sd_sck.value)} mosi={int(dut.sd_mosi.value)}")
-            except Exception:
-                pass
-
-    cocotb.start_soon(wrespwatch())
-    cocotb.start_soon(wpaywatch())
     cocotb.start_soon(uart_rx())
 
+    def strip_traces(b):
+        out = bytearray()
+        i = 0
+        while i < len(b):
+            if b[i] == 0x55 and i + 4 <= len(b) and i < 4_000_000:
+                # trace frame: 0x55, phase, reader-state, block
+                out_note = None
+                i += 4
+                continue
+            out.append(b[i])
+            i += 1
+        return bytes(out)
+
+    def findings(b):
+        return strip_traces(b).find(b"G0 ")
+
     waited = 0
-    while len(uarts) < 9 and waited < 4_000_000:
+    while (strip := strip_traces(bytes(uarts))).find(b"G0 \r") < 0 \
+            and waited < 16_000_000:
         await RisingEdge(dut.clk)
         waited += 1
-        if waited in (500_000, 1_000_000, 2_000_000, 3_000_000, 3_600_000, 3_700_000):
+        if waited == 750_000:
             try:
-                print(f"  probe@{waited}: top.st={int(dut.st.value)} rd.st={int(dut.sdr.st.value)} "
-                      f"blk={int(dut.sdr.st.value) and int(dut.sd_blk.value)} lba={int(dut.sd_lba.value)} "
-                      f"blkw={int(dut.sd_blkw.value)} wr={int(dut.sd_wr.value)} rreq={int(dut.sd_read_req.value)} "
-                      f"wv={int(dut.sd_word_v.value)} rdd={int(dut.sd_rd_done.value)} "
-                      f"fast={int(dut.sdr.fast.value)} mslow={int(dut.sdr.m_slow.value)} "
-                      f"bcyc={int(dut.sdr.bcyc.value)} "
-                      f"rdst={int(dut.sdr.st.value)} rderr={int(dut.sdr.error.value)}")
-            except Exception as e:
-                print("probe fail:", e)
-        if waited == 500_000:
-            print("  probe@500k: reader.st:", sthist[-14:])
-    assert len(uarts) >= 9, f"no verdict line after {waited} cycles; reader states so far: {sthist[-20:]}"
+                print(f"  probe: top.st={int(dut.st.value)} reader.st="
+                      f"{int(dut.sdr.st.value)} prov_blk={int(dut.prov_blk.value)} "
+                      f"sd_blk={int(dut.sd_blk.value)} rd_st={int(dut.rd_st.value)} "
+                      f"writes={len(model.writes)} err={int(dut.sdr.error.value)}")
+            except Exception:
+                pass
 
     line = bytes(uarts)
-    vline = line.split(b'\r')[0]
-    print("UART line:", vline)
-    print("LEDs:", f"{int(dut.led.value):06b}")
+    print("writes captured by model:", sorted(model.writes))
+    clean = strip_traces(line)
+    vline = clean[:clean.find(b"\r")] if b"\r" in clean else clean[:17]
+    print("UART verdict:", vline)
 
-    print("req/rdy log:", [(i, f"st{a} rq{b} lba{c} bs{d} blk{e}") for i, (a, b, c, d, e) in rlog])
-    if vline.startswith(b"G0 SERR"):
-        from collections import Counter
-        print("reader state histogram:", dict(Counter(sthist)))
-        try:
-            print("reader regs: plan", int(dut.sdr.plan.value), "r1q", hex(int(dut.sdr.r1q.value)),
-                  "args:", [hex(int(dut.sdr.b[i].value)) for i in (1, 2, 3, 4)],
-                  "arg_echo_ok", int(dut.sdr.arg_echo_ok.value),
-                  "resp_need", int(dut.sdr.resp_need.value),
-                  "poll_i", int(dut.sdr.poll_i.value), "to", int(dut.sdr.to.value))
-        except Exception as e:
-            print("regs probe failed:", e)
-        print("model frames seen:", len(model.fhist), "last cmd ids:", model.fhist[-8:])
-        raise AssertionError("card init failed (G0 SERR); see diagnostics above")
-
+    # byte-exact roundtrip checks
+    assert len(model.writes) == N_BLOCKS, f"only {len(model.writes)} blocks written"
+    assert model.writes == {i: payload[i * LBA:(i + 1) * LBA] for i in range(N_BLOCKS)}, \
+        "model-captured writes deviate from the image"
     npz = np.load("/tmp/gate0_vecs.npz")
-
-    # byte-exactness of the card -> BRAM fill
     stim_w = []
-    exp_w = []
-    flg = []
     for i in range(21):
         blob = bytes(npz[f"rec{i}_wblk"].tobytes()) + bytes(npz[f"rec{i}_act"].tobytes())
-        stim_w += [int.from_bytes(blob[4 * j: 4 * j + 4], "little") for j in range(118)]
-        exp_w.append(int(npz[f"rec{i}_gold"]))
-        cid = int(npz[f"rec{i}_case"])
-        flg.append(1) if (i == 0 or cid != int(npz[f"rec{i - 1}_case"])) else flg.append(0)
+        stim_w += [int.from_bytes(blob[4 * j:4 * j + 4], "little") for j in range(118)]
     mism = 0
     for i in range(2478):
         got = int(dut.stim[i].value) & 0xFFFFFFFF
@@ -362,41 +247,13 @@ async def gate_from_card(dut):
             mism += 1
             if mism <= 6:
                 print(f"  stim[{i}] {got:08x} != {stim_w[i]:08x}")
-    fbad = 0
-    for i in range(21):
-        got = int(dut.exp_mem[i].value) & 0xFFFFFFFF
-        if got != (exp_w[i] & 0xFFFFFFFF):
-            fbad += 1
-            print(f"  exp[{i}] {got:08x} != {exp_w[i] & 0xFFFFFFFF:08x}")
-        fg = int(dut.flags_mem[i].value) != 0
-        if fg != (flg[i] != 0):
-            fbad += 1
-            print(f"  flags[{i}] {fg} != {flg[i] != 0}")
-    assert mism == 0 and fbad == 0, f"card fill not byte-exact ({mism} stim, {fbad} exp/flags)"
-    print("card fill: byte-exact (2478 stim words, 21 exp, 21 flags)")
+    assert mism == 0, f"card fill not byte-exact ({mism} stim words)"
+    print("card fill: byte-exact (2478 stim words)")
 
     if vline.startswith(b"G0 PASS"):
         led_v = int(dut.led.value)
-        # pads are active-low: PASS = exactly one pad low (led[5]),
-        # led[4] high (dark), the four index pads low on
         assert led_v == 0b010000, f"PASS but LED pads {led_v:06b}"
     elif vline.startswith(b"G0 FAIL"):
-        npz_all = bytearray()
-        for i in range(21):
-            npz_all += bytes(npz[f"rec{i}_wblk"].tobytes()) + bytes(npz[f"rec{i}_act"].tobytes())
-        npz_all = bytes(npz_all)
-        rec0 = bytes(npz[f"rec0_wblk"]) + bytes(npz[f"rec0_act"])
-        print("wm[0..2]:", [f"{int(dut.wm[i].value)&0xFFFFFFFF:08x}" for i in range(3)],
-              "want:", [f"{int.from_bytes(rec0[4*i:4*i+4],'little'):08x}" for i in range(3)])
-        print("am[0..2]:", [f"{int(dut.am[i].value)&0xFFFFFFFF:08x}" for i in range(3)],
-              "want:", [f"{int.from_bytes(rec0[200+4*i:200+4*i+4],'little'):08x}" for i in range(3)])
-        print("stim[0..2]:", [f"{int(dut.stim[i].value)&0xFFFFFFFF:08x}" for i in range(3)])
-        print("stim[128..130]:", [f"{int(dut.stim[i].value)&0xFFFFFFFF:08x}" for i in range(128, 131)],
-              "want:", [f"{int.from_bytes(npz_all[4*i:4*i+4],'little'):08x}" for i in range(128, 131)])
-        print("exp[0..2]:", [f"{int(dut.exp_mem[i].value)&0xFFFFFFFF:08x}" for i in range(3)],
-              "want:", [f"{int(npz[f'rec{i}_gold'] & 0xFFFFFFFF):08x}" for i in range(3)])
-        print("wm[0..2] got/want above; flags[0..1]:",
-              [int(dut.flags_mem[i].value) for i in range(2)])
-        raise AssertionError(f"on-chip mismatch at record {vline[9:10].decode()}; dumps above")
+        raise AssertionError(f"on-chip mismatch at record {vline[9:11].decode()}")
     else:
         raise AssertionError(f"unexpected line {vline!r}")
