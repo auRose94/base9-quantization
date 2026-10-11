@@ -1864,3 +1864,70 @@ area — 10 KB of scrambled file bytes at worst, no structural damage likely,
 but the reader-based partition flow in `partner/ninths_sd_image.py` (dedicated
 payload partition + clean FAT32) remains the tidiest layout once a card reader
 is available.
+
+## 2026-10-11, session 30 — real tensors through the gate: the served 1.5B container's arithmetic, and the chain-tree protocol fix that fell out
+
+Rose's question: "can we give the FPGA an actual (advanced) model — we
+verified it works; can it be made useful?" Two-part answer built today.
+
+**Real-tensor payload.** `fpga/partner/real_slice_image.py` slices REAL K9_6
+superblocks out of the served 1.5B coder container
+(`results/qwen_coder_1.5b_k63_embed99.k9`: k9 rANS digits + ent8 scales
+decoded via `experiments/k9.py`, superblocks packed by
+`experiments/ninths_native.pack` — the Gate-A-validated packer, so the bytes
+equal the fork loader's resident K9_6 materialization) and crosses them with
+a REAL activation h. Two h grades are supported: `--act embd:TOK` (the
+runtime-chain dequant `fp16(m/H)·(d−H)` of an embed row — real model data,
+no forward pass) and `--act file:` a genuine forward-pass state, captured by
+the fork's own `llama-embedding` on the `ninths_kv` GGUF
+(`--pooling last`, prompt = a real Godot-4 request; unknown-type-k9 warning
+is the expected sentinel notice). The default image: 21 records = 4 chains,
+each chain one real fp32 dot product — `self_attn.o_proj` row 0 of layers
+0/1/2 (6 superblocks = the full 1536-dim row) plus a 3-superblock partial.
+
+**The FAIL that was worth catching.** The first real-payload top-sim came
+back `G0 FAIL`, fill byte-exact, while the tool's numpy golden and the
+verbatim fork C kernel agreed bit-exact on every chain. Per-record probing
+(`fpga/analyze_dump.py` + the tb's NIN_SD_DUMP snapshot) showed every
+per-superblock RTL partial equal to the numpy singleton to the bit — the RTL
+kernel and its byte routing are CLEAN on real weights — and the divergence
+sat entirely in the CHAIN: the gate protocol's exp words had been the C
+row-kernel's own accumulation tree (4 fp32 adds per superblock, sumf global
+across the chain), while the silicon tops chain ONE fp32 partial per
+superblock. Different add trees ⇒ 1-ulp-class differences on real
+magnitudes; the synthetic vectors never tripped it because 18 of 21 records
+were singleton chains where the trees coincide trivially. Fix = protocol,
+not hardware: exp is now the chain tree (singletons + running fp32 adds,
+case-reset at flags — deterministic IEEE, the board's compare holds by
+construction along a documented 1-ulp note for row-level results), the row
+tree stays as the python==C check. Corrected everywhere: `tb_k96.py`
+(regenerated the deterministic synthetic vectors + `ninths_sd.bin` +
+`synth/pay.hex`), `run_crosscheck.py` (row-tree C==numpy check preserved),
+and the tool. Along the way the tool also had a self-bug where the chain
+added the partial's raw integer bit-pattern (~3e9 exps) — found by the same
+dump, fixed with the bits→float conversion.
+
+**Green state.** Kernel bench 21/21 (V1 shape, 142 cyc/superblock on real
+vectors); crosscheck PASS on both npz trees; full-top sims `G0 PASS` on the
+real payload through `gate0sd_top` and through the new
+`fpga/synth/gate0sd_real_top.sv` — the dbg lineage's three silicon fixes
+(div-MSB clock, decoupled power-on counter, 27 MHz-domain watchdog) with the
+full telegraph restored, embedded `pay_real.hex`, `build.sh gate0sd_real_top`
+target added; tb overrides via `NIN_SD_IMG`/`NIN_SD_NPZ`/`NIN_SD_PAY_POKE`
+(the poke writes the override image through the power-on reset window so the
+plain top's synthetic `pay.hex` stays intact in git).
+
+**Honest token economics** (in fpga/README's new section, calibrated
+against the byte engine the next morning): `spi_byte_master` costs ~33
+clk13 cycles per byte at HALF_FAST=1 ⇒ the 1-bit lane ≈ 420 kB/s at the
+measured ~13.4 MHz fabric clock (≈ 210 kB/s at the intended 6.75) — the
+card is the bottleneck by an order of magnitude over the ~3.4–6.3 MB/s
+fabric. 1.5B streaming K9_6 = ~47 min/token today, ~12 min with the 4-bit
+SD rung at the same byte engine; with 4-bit + SD high-speed (~25 MHz SCK =
+12.5 MB/s) the fabric becomes the cap (~3–6 min/token, ~0.2 t/s). GPU
+reference 109 t/s. Conclusion stated in the README: this board class =
+bit-exact validator, protocol substrate, novelty demo — not a serving
+engine. The real useful rungs: this silicon proof on real containers, then
+4-bit SD + SD high-speed + the streamed-unembed logits demo (~2-min class),
+then the SDRAM working-set stage; the serving-engine tier = a different
+board class entirely.
