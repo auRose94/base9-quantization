@@ -82,6 +82,7 @@ module gate0sd_top (
   reg [31:0] sd_word;
   reg [23:0] boot_to;
   reg        card_err, sd_pend;
+  reg [3:0]  err_code;       // 0 ok; 1 init; 2 write; 3 verify; 4 watchdog
 
   wire [31:0] sd_word_r, sd_wdata;
   wire        sd_word_v_r, sd_rd_done_r, sd_done_r, sd_error_r, sd_busy_r;
@@ -235,6 +236,7 @@ module gate0sd_top (
       sd_blk    <= 6'd0;
       boot_to   <= 24'd0;
       card_err  <= 1'b0;
+      err_code  <= 4'd0;
       sd_pend   <= 1'b0;
       sd_lba    <= 32'(SD_BASE_LBA);
       prov      <= 1'b0;
@@ -291,10 +293,12 @@ module gate0sd_top (
           boot_to <= boot_to + 24'd1;
           if (boot_to >= 24'd16777215) begin   // ~10 min watchdog
             card_err <= 1'b1;
+            err_code <= 4'd4;
             st <= S_DONE;
           end else if (sd_done) begin
             if (sd_error) begin
               card_err <= 1'b1;
+              err_code <= 4'd1;
               st <= S_DONE;
             end else begin
               prov <= !prov_btn;              // key held = provision this boot
@@ -317,7 +321,11 @@ module gate0sd_top (
           end
         end
         S_PROV: begin
-          if (sd_rd_done) begin               // one block written
+          if (sd_error) begin                 // write failed (reader fatal)
+            card_err <= 1'b1;
+            err_code <= 4'd2;
+            st <= S_DONE;
+          end else if (sd_rd_done) begin      // one block written
             prov_blk <= prov_blk + 6'd1;
             if (prov_blk == 6'd19) begin
               sd_blk  <= 6'd0;
@@ -358,6 +366,7 @@ module gate0sd_top (
             if (sd_blk >= 6'd20) begin     // 20 blocks resident
               if (provv_err) begin
                 card_err <= 1'b1;          // card != embedded payload
+                err_code <= 4'd3;
                 st <= S_DONE;
               end else st <= S_LOAD;
             end else begin
@@ -440,7 +449,7 @@ module gate0sd_top (
   //   G0 PASS   -> five lit, led[4] dark
   //   G0 FAIL   -> led[4] lit + failing record index
   wire [5:0] lit_mask =
-    card_err ? blink :
+    card_err ? (blink | {2'b00, err_code[3:0]}) :   // walker + error code
     {fail ? 1'b0 : 1'b1,                       // led[5]: run/pass on, fail off
      done_flag && fail,                        // led[4]: fail marker
      st == S_PROV ? prov_blk[3:0] :            // provisioning progress

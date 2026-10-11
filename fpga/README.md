@@ -73,11 +73,15 @@ cheap streaming decode pipeline is a real serving path.
       `openFPGALoader --board tangnano20k -f gate0sd.fs` writes the bitstream
       into the board's SPI config flash, so every power-up boots it. Board
       LEDs are ACTIVE-LOW (LiteX names them led_n): pads inverted; visuals —
-      card-error = walking single blink; provisioning/run = led[5] on with
-      the progress index on the four index LEDs; **G0 PASS = exactly the
-      five index-side LEDs dark except one; G0 FAIL = a distinct lit marker
-      plus the failing record index** (see gate0sd_top lit_mask). Also fix:
-      `openFPGALoader` writes flash via `-f`, there is no `--flash` flag.
+      card-error = a walking light plus the four index LEDs showing a binary
+      error code (1 = card init failed, 2 = a write failed, 3 = the write/
+      readback roundtrip mismatched, 4 = watchdog); provisioning/run =
+      led[5] on with the progress index on the four index LEDs; **G0 PASS =
+      led[5] lit + all four index LEDs lit, led[4] dark; G0 FAIL = led[4]
+      lit + the failing record index** (see gate0sd_top lit_mask). SDXC
+      write-busy budget widened to ~1 s/phase (WR_BUDGET) — a real card can
+      sit busy far past a 333 ms NAC budget. Also fix: `openFPGALoader`
+      writes flash via `-f`, there is no `--flash` flag.
 - [x] **Host partner program** (`partner/ninths_sd_image.py`): mkimage builds
       the SD payload (stim + exp + case-start flags at LBA 2048, 20 blocks);
       flash-card/verify need a USB reader + root (none attached at run time —
