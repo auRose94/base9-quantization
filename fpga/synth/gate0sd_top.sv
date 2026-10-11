@@ -83,6 +83,7 @@ module gate0sd_top (
   reg [23:0] boot_to;
   reg        card_err, sd_pend;
   reg [3:0]  err_code;       // 0 ok; 1 init; 2 write; 3 verify; 4 watchdog
+  reg        sd_done_seen;   // sticky: never miss the reader's init-done pulse       // 0 ok; 1 init; 2 write; 3 verify; 4 watchdog
 
   wire [31:0] sd_word_r, sd_wdata;
   wire        sd_word_v_r, sd_rd_done_r, sd_done_r, sd_error_r, sd_busy_r;
@@ -131,6 +132,7 @@ module gate0sd_top (
       sd_error   <= sd_error_r;
       sd_busy    <= sd_busy_r;
       sd_word    <= sd_word_r;
+      if (sd_done_r) sd_done_seen <= 1'b1;
     end
   end
 
@@ -233,6 +235,7 @@ module gate0sd_top (
   always @(posedge clk13) begin
     if (!rst_n) begin
       sd_start  <= 1'b0;
+      sd_done_seen <= 1'b0;
       sd_wr     <= 32'd0;
       sd_blkw   <= 7'd0;
       sd_blk    <= 6'd0;
@@ -249,7 +252,8 @@ module gate0sd_top (
       pay_a     <= 12'd0;
       pay_q     <= 32'd0;
     end else begin
-      sd_start <= 1'b0;
+      if (sd_busy_r && sd_start)              // reader captured the start
+        sd_start <= 1'b0;
       case (st)
         S_SDBOOT: boot_to <= boot_to + 24'd1;
         S_SDFILL: begin
@@ -297,7 +301,8 @@ module gate0sd_top (
             card_err <= 1'b1;
             err_code <= 4'd4;
             st <= S_DONE;
-          end else if (sd_done) begin
+          end else if (sd_done_seen) begin     // sticky init-done
+            sd_done_seen <= 1'b0;
             if (sd_error) begin
               card_err <= 1'b1;
               err_code <= 4'd1;
@@ -464,8 +469,8 @@ module gate0sd_top (
 
   wire [5:0] lit_mask =
     card_err ?      (blink | {2'b00, err_code[3:0]}) :
-    st == S_PROV   ? {2'b11, prov_blk[3:0]} :
-    st == S_SDFILL ? {2'b11, sd_blk[3:0]} :
+    st == S_PROV   ? {2'b11, rd_st[3:0]} :   // stuck-write state readable
+    st == S_SDFILL ? {2'b11, rd_st[3:0]} :
     st == S_SDBOOT ? {2'b11, rd_st[3:0]} :   // init telegraph: reader FSM
     st == S_BOOT   ? {2'b11, 4'd0} :
     done_flag      ? (fail ? {1'b0, beacon_on, fail_idx[3:0]}
