@@ -124,11 +124,23 @@ cheap streaming decode pipeline is a real serving path.
       Consequence for the formal retest: the payload's exp+flags words
       changed (42 of 2520), so the post-S1-repair reflash needs one
       S2-provision boot on the new image (already the reflash plan).
-- [ ] Next rungs: K9_7/K9_4 V2 kernels; 4-bit SD mode (DAT1/2 = 85/80) for
-      4× SPI throughput; fetch/compute overlap + skid buffer; SDRAM streaming
-      stage (the streamed-model ladder's first rung); the full
-      streamed-unembed logits demo (all 151936 logit rows per token = the
-      honest bandwidth datapoint of the whole board class).
+- [x] **K9_7 V2 streaming kernel (session 30 cont 1)** —
+      `rtl/k97_vec_dot_v2.sv`: 264-byte container, one contiguous 256-code
+      signed-int8 stream (d − H, H = 49), 9-bit code addresses, same FSM +
+      fp ops + scale-service shape as the k9_6 V2. Bit-exact vs
+      `golden.k97_partials` and the verbatim fork kernel: synthetic 20/20
+      (fp16-inf-scale, exact-zero and ±49-code extremes included) and REAL
+      12/12 — the 1.5B is tied-embed so `__embed__` (k99) rows ARE the
+      unembed; the real vectors = embed rows 0/1 × the llama-embedding h
+      (`real_slice_image.py --kind k9_7` → `/tmp/gate0_k97_real_vecs.npz`).
+      tb = port-side caller bench (tb_k97.py: the top's sync-read + mux
+      circuit in one Scratch task, S_SUMF one-cycle scale forecast,
+      K97_TRACE per-cycle debug; tb_k97dbg = the ext-codes zero-invariant
+      single-record case). This is the rung the streamed-unembed logits
+      demo needs (no k9_7 card top yet).
+- [ ] Next rungs: the k9_7 card top + streamed-unembed loop; K9_4 V2
+      kernel; 4-bit SD mode (DAT1/2 = 85/80) for 4× SPI throughput;
+      fetch/compute overlap + skid buffer; SDRAM streaming stage.
 
 ## Honest token economics of this device class (2026-10-11, session 30)
 
