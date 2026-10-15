@@ -64,6 +64,19 @@ the real Godot verifier).
   signals, not conclusions (the established noise-floor discipline applies:
   see `experiments/eval_harness.py` + the draws-3 eval history).
 
+## Smoke verdict (2026-10-15, tuned 1.5B coder, seed 3072)
+
+Mechanism green: the file evolves through the protocol or the auto-file
+assist, junk filings are refused by the Godot verdict, the ledger records
+the file trajectory (3184→3351 tokens) and edit positions. Two model-level
+findings: the tuned 1.5B never emits the ops block zero-shot (the generic
+1.5B does — the paper's RL rung is the real fix), and its greedy
+trajectories on chain prompts flip between good code and degenerate loops
+between runs (bf16/sdpa nondeterminism) — so quality claims need
+multi-draw. Token economy is within ~8% at 5 steps while compaction barely
+ran; the file arm's advantage is expected to open up at real compaction or
+8k/16k seeds.
+
 ## Next rungs from these sources
 
 1. FA dispatch (already NEXT in the KV-quant sweep): K9_4/K9_6 KV types into
