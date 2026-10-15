@@ -29,6 +29,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "experiments"))
 os.environ.setdefault("HF_HOME", str(ROOT / ".hf-cache"))
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
@@ -36,36 +37,7 @@ from gdscript_verify import GodotVerifier, OK      # noqa: E402
 from clm_agent import (ContextStore, FileAgent,    # noqa: E402
                        build_system_prompt, last_code_block, CODE_FENCE,
                        extract_code_candidates)
-
-
-def shim_torchaudio() -> None:
-    """Unblock the transformers import on this box: torch is the cu13.4 build
-    but torchaudio is cu13.3, and torch raises a version-mismatch RuntimeError
-    at import, which transformers turns into a fatal model-import failure.
-    Our path never touches audio — a stub module (with raising functions for
-    the lazily-used entry points) keeps the audio optional import honest."""
-    import importlib.machinery
-    import types
-    try:
-        import torchaudio                              # noqa: F401
-        return
-    except Exception:
-        pass
-    stub = types.ModuleType("torchaudio")
-    # a bare ModuleType has __spec__ = None, and transformers'
-    # _is_package_available() raises ValueError on exactly that — give the
-    # stub a real package spec so availability checks simply proceed.
-    stub.__spec__ = importlib.machinery.ModuleSpec(
-        "torchaudio", None, is_package=True)
-
-    def _need(*a, **k):                                # noqa: ARG001
-        raise RuntimeError("torchaudio is stubbed (CUDA version mismatch)")
-
-    stub.load = _need
-    functional = types.ModuleType("torchaudio.functional")
-    functional.resample = _need
-    stub.functional = functional
-    sys.modules["torchaudio"] = stub
+from audio_shim import apply_torchaudio_shim       # noqa: E402
 
 CONVENTIONS = """\
 --- PROJECT CONVENTIONS (binding for later tasks) ---
@@ -234,7 +206,7 @@ CSV_COLS = ["arm", "seed_tokens", "step_id", "step_pass", "step_status",
 def run_eval(preset: str, variant: str | None, arms: list[str], seed_tokens: int,
              max_new_tokens: int, tag: str, seed: int, verbose: bool,
              tuned: list[str], k9: list[str]) -> int:
-    shim_torchaudio()
+    apply_torchaudio_shim()
     from chat_k9 import PRESETS, Engine                  # torch lands here
     pre = PRESETS[preset]
     variants = {n: (None if p is None else str(ROOT / p))

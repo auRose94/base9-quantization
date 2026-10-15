@@ -32,6 +32,10 @@ sys.path.insert(0, str(HERE / "experiments"))
 os.environ.setdefault("HF_HOME", str(HERE / ".hf-cache"))
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+from audio_shim import apply_torchaudio_shim  # noqa: E402
+
+apply_torchaudio_shim()
+
 import torch  # noqa: E402
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer  # noqa: E402
 
