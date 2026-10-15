@@ -11,6 +11,11 @@ two K9 variants needs no restore at all — only switching back to bf16 does.
     python3 chat_k9.py --preset 7b-tuned   # 7B Godot-4 tune: bf16, merged, k9, k15
     python3 chat_k9.py --preset 7b --no-serve    # same thing in the terminal
     python3 chat_k9.py --k9 results/x.k9 --base Qwen/...   # explicit
+    python3 chat_k9.py --mcp "ctx=lean-ctx mcp" \
+        --tools ctx_read,ctx_search,ctx_tree,ctx_glob,ctx_shell
+        # MCP tool calling (experiments/mcp_client.py): the model emits Qwen
+        # native tool calls (or fenced JSON), the loop executes lean-ctx's
+        # ctx_* tools and feeds results back; --tools keeps the schema list short.
 
 Opens a local web chat (stdlib http.server — no gradio/flask/network needed).
 The variant picker is the point: same prompts, same weights' shape, different
@@ -21,6 +26,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shlex
 import sys
 import threading
 import time
@@ -68,6 +75,51 @@ PRESETS = {
 }
 DEFAULTS = dict(temperature=0.7, top_p=0.8, top_k=20, max_new_tokens=512)
 MAX_CTX = 30000
+TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*<tool_call>", re.S)
+JSON_FENCE_RE = re.compile(r"```(?:json|tool_call)?\s*\n(.*?)```", re.S)
+TOOL_STEER = ("You have function tools available. Call one by emitting a "
+              "native <tool_call>{\"name\": ..., \"arguments\": {...}}<tool_call> block "
+              "as your assistant message (NOT inside a ```json fence). After "
+              "a tool result arrives, STOP and think: answer the user from "
+              "the result, or call a DIFFERENT tool only if you need more "
+              "information. Never repeat an identical call. If a result "
+              "mentions a cache, a cross-agent note, or tokens avoided, it "
+              "carries nothing new — the real result was already delivered "
+              "in an earlier result; use it and answer.")
+
+
+def _one_tool_call(raw: str) -> dict | None:
+    try:
+        call = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(call, dict) or not isinstance(call.get("name"), str):
+        return None
+    args = call.get("arguments", {})
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            args = {}
+    return {"name": call["name"],
+            "arguments": args if isinstance(args, dict) else {}}
+
+
+def parse_tool_calls(text: str) -> list[dict]:
+    """Qwen-native <tool_call>{...}<tool_call> blocks, with a fallback for weak models
+    that emit the call as a ```json fence instead."""
+    calls = []
+    for raw in TOOL_CALL_RE.findall(text):
+        call = _one_tool_call(raw)
+        if call:
+            calls.append(call)
+    if not calls:
+        blocks = JSON_FENCE_RE.findall(text)
+        if blocks:
+            call = _one_tool_call(blocks[-1].strip())
+            if call:
+                calls.append(call)
+    return calls
 
 
 # --------------------------------------------------------------------- info --
@@ -243,12 +295,20 @@ class Engine:
         return msgs
 
     @torch.no_grad()
-    def stream(self, msgs: list, **kw):
-        """Yield (delta_text, None) while generating, then (None, stats)."""
+    def stream(self, msgs: list, tools: list | None = None, **kw):
+        """Yield (delta_text, None) while generating, then (None, stats).
+
+        With tools (Qwen function-tool format), the chat template renders the
+        tool block and the model may answer with <tool_call> JSON calls."""
         gen = {**DEFAULTS, **{k: v for k, v in kw.items() if v is not None}}
         msgs = self._trim(list(msgs))
-        text = self.tok.apply_chat_template(msgs, tokenize=False,
-                                            add_generation_prompt=True)
+        if tools:
+            text = self.tok.apply_chat_template(msgs, tokenize=False,
+                                                add_generation_prompt=True,
+                                                tools=tools)
+        else:
+            text = self.tok.apply_chat_template(msgs, tokenize=False,
+                                                add_generation_prompt=True)
         enc = self.tok(text, return_tensors="pt").to(self.device)
         streamer = TextIteratorStreamer(self.tok, skip_prompt=True,
                                         skip_special_tokens=True)
@@ -273,6 +333,76 @@ class Engine:
                          reply_tokens=n, seconds=round(dt, 2),
                          tok_per_s=round(n / dt, 1) if dt else 0.0,
                          variant=self.active)
+
+    @torch.no_grad()
+    def stream_tools(self, msgs: list, tools: list, executor,
+                     max_hops: int = 4, **kw):
+        """stream() plus MCP tool rounds: <tool_call> calls are executed against
+        `executor(name, arguments)` and their results appended, up to
+        max_hops rounds. Yields (text, None) as the model emits it (tool
+        round-trips appear as synthetic notes) and (None, stats) once; stats
+        carry hops= and the aggregate reply-token count."""
+        cur = list(msgs)
+        if cur and cur[0].get("role") == "system":
+            cur[0] = dict(cur[0])
+            cur[0]["content"] = cur[0]["content"].rstrip() + "\n\n" + TOOL_STEER
+        hops = 0
+        reply_sum = 0
+        seen_calls: set = set()
+        for hop in range(max_hops):
+            hops = hop + 1
+            text = ""
+            stats = None
+            for piece, st in self.stream(cur, tools=tools, **kw):
+                if piece is None:
+                    stats = st
+                else:
+                    text += piece
+                    yield piece, None
+            reply_sum += stats["reply_tokens"]
+            calls = parse_tool_calls(text)
+            if not calls:
+                yield None, dict(stats, hops=hops, reply_tokens=reply_sum)
+                return
+            cur.append({"role": "assistant", "content": text})
+            if hop == max_hops - 1:
+                yield "\n[tool hop cap hit; not executing further]\n", None
+                yield None, dict(stats, hops=hops, tool_cap=True,
+                                 reply_tokens=reply_sum)
+                return
+            new_calls = 0
+            for call in calls:
+                sig = (call["name"],
+                       json.dumps(call["arguments"], sort_keys=True))
+                try:
+                    out = executor(call["name"], call["arguments"])
+                    tail = out[-400:] if out else "(empty)"
+                    tool_content = out
+                except Exception as e:                                  # noqa: BLE001
+                    tail = str(e)[:400]
+                    tool_content = f"error: {tail}"
+                if sig in seen_calls:
+                    tool_content = (tool_content
+                                    + "\n\nNOTE: you already made this exact "
+                                    "call; its result above is CURRENT — "
+                                    "answer the user from it, or call a "
+                                    "DIFFERENT tool. Do not repeat it.")
+                else:
+                    new_calls += 1
+                seen_calls.add(sig)
+                yield f"\n[tool {call['name']} → {tail}]\n", None
+                cur.append({"role": "tool", "name": call["name"],
+                            "content": tool_content})
+            if not new_calls:
+                # identical-call deadlock: the results were already delivered;
+                # force one answering generation (the hop cap still bounds us)
+                yield ("\n[all results already delivered — ask the model to "
+                       "answer now]\n"), None
+                cur.append({"role": "tool", "name": calls[0]["name"],
+                            "content": "(every call you made here repeated a "
+                                       "previous one; all results are above. "
+                                       "Write your final answer to the user "
+                                       "NOW, with no tool calls.)"})
 
 
 # -------------------------------------------------------------------- web ----
@@ -358,7 +488,9 @@ fetch('/state').then(r=>r.json()).then(s=>{
   // set selection on the <select>, not per-option: an option's `selected` set
   // before/while it is appended gets dropped and the first option wins.
   sel.value=s.active;
-  setStat({active:s.active,tok_per_s:0,reply_tokens:0,summary:info[s.active]?.summary||''});
+  const sum=info[s.active]?.summary||'';
+  statbar.textContent = s.tools ? `mcp tools (${s.tools.length}): ${s.tools.join(", ")}` : (sum||'');
+  setStat({active:s.active,tok_per_s:0,reply_tokens:0,summary:''});
   sel.disabled=false;});
 sel.disabled=true;
 sel.onchange=async()=>{const v=sel.value;stats.textContent='loading '+v+' …';statbar.textContent='';
@@ -407,7 +539,8 @@ inp.focus();
 </script></body></html>"""
 
 
-def make_handler(eng: Engine, state: dict):
+def make_handler(eng: Engine, state: dict, tools: list | None = None,
+                 executor=None, max_hops: int = 4):
     from http.server import BaseHTTPRequestHandler
 
     class H(BaseHTTPRequestHandler):
@@ -433,7 +566,9 @@ def make_handler(eng: Engine, state: dict):
             elif self.path == "/state":
                 self._json(200, dict(active=eng.active, variants=list(eng.variants),
                                      base=eng.base_id, n_params=eng.n_params,
-                                     info=eng.info))
+                                     info=eng.info,
+                                     tools=None if tools is None else
+                                     [t["function"]["name"] for t in tools]))
             else:
                 self._json(404, dict(error="not found"))
 
@@ -468,10 +603,14 @@ def make_handler(eng: Engine, state: dict):
                 # only when the socket closes, so make sure it does.
                 self.close_connection = True
                 try:
-                    for piece, stats in eng.stream(
-                            msgs, temperature=req.get("temperature"),
-                            top_p=req.get("top_p"),
-                            max_new_tokens=req.get("max_new_tokens")):
+                    gen_kwargs = dict(temperature=req.get("temperature"),
+                                      top_p=req.get("top_p"),
+                                      max_new_tokens=req.get("max_new_tokens"))
+                    gen = (eng.stream_tools(msgs, tools, executor, max_hops,
+                                            **gen_kwargs)
+                           if tools is not None else
+                           eng.stream(msgs, **gen_kwargs))
+                    for piece, stats in gen:
                         ev = dict(done=True, stats=stats) if piece is None else dict(t=piece)
                         self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode())
                         self.wfile.flush()
@@ -489,10 +628,13 @@ def make_handler(eng: Engine, state: dict):
     return H
 
 
-def serve(eng: Engine, port: int, host: str = "127.0.0.1"):
+def serve(eng: Engine, port: int, host: str = "127.0.0.1",
+          tools: list | None = None, executor=None, max_hops: int = 4,
+          tool_cleanup=None):
     from http.server import ThreadingHTTPServer
     state: dict = {}
-    srv = ThreadingHTTPServer((host, port), make_handler(eng, state))
+    srv = ThreadingHTTPServer((host, port), make_handler(eng, state, tools,
+                                                         executor, max_hops))
     url = f"http://{host}:{port}"
     print(f"\n  chat ready → {url}\n  (ctrl-c to stop)\n", flush=True)
     try:
@@ -501,11 +643,17 @@ def serve(eng: Engine, port: int, host: str = "127.0.0.1"):
         print("\nbye")
     finally:
         srv.server_close()
+        if tool_cleanup:
+            tool_cleanup()
 
 
 # -------------------------------------------------------------------- repl ---
-def repl(eng: Engine):
-    print("\nvariant:", eng.active, "| /use <name>, /reset, /q\n")
+def repl(eng: Engine, tools: list | None = None, executor=None,
+         max_hops: int = 4):
+    print("\nvariant:", eng.active, "| /use <name>, /reset, /tools, /q\n")
+    if tools is not None:
+        print("mcp tools:", ", ".join(t["function"]["name"] for t in tools))
+        print()
     msgs: list = []
     while True:
         try:
@@ -520,6 +668,14 @@ def repl(eng: Engine):
         if line == "/reset":
             msgs = []
             print("(history cleared)")
+            continue
+        if line == "/tools":
+            if tools is None:
+                print("(no tools — start with --mcp name=command)")
+            else:
+                for t in tools:
+                    desc = t["function"]["description"].split("\n")[0]
+                    print(f"  {t['function']['name']:20s} {desc}")
             continue
         if line.startswith("/use "):
             name = line[5:].strip()
@@ -539,7 +695,9 @@ def repl(eng: Engine):
         print("model> ", end="", flush=True)
         acc = ""
         stats = None
-        for piece, st in eng.stream(msgs):
+        gen = (eng.stream_tools(msgs, tools, executor, max_hops)
+               if tools is not None else eng.stream(msgs))
+        for piece, st in gen:
             if piece is None:
                 stats = st
             else:
@@ -568,6 +726,14 @@ def main() -> int:
     ap.add_argument("--row-chunk", type=int, default=4096)
     ap.add_argument("--no-serve", action="store_true", help="terminal REPL instead of the web UI")
     ap.add_argument("--no-warmup", action="store_true")
+    ap.add_argument("--mcp", action="append", default=[], metavar="NAME=CMD",
+                    help="connect an MCP stdio server, e.g. --mcp ctx='lean-ctx mcp' "
+                         "(repeatable; enables tool calling in chat)")
+    ap.add_argument("--tool-hops", type=int, default=4,
+                    help="max tool rounds per message (default 4)")
+    ap.add_argument("--tools", metavar="NAME,NAME",
+                    help="allowlist of tool names to expose (default: all; "
+                         "small models drown in schema lists)")
     a = ap.parse_args()
 
     pre = PRESETS[a.preset]
@@ -607,10 +773,43 @@ def main() -> int:
             pass
         print(f"  warm in {time.time()-t0:.1f}s", flush=True)
 
+    tools = executor = None
+    if a.mcp:
+        import mcp_client
+        servers = {}
+        for spec in a.mcp:
+            name, _, cmd = spec.partition("=")
+            if not name.strip() or not cmd.strip():
+                print(f"  ! bad --mcp {spec!r} (want NAME=command), skipping")
+                continue
+            servers[name.strip()] = shlex.split(cmd)
+        if servers:
+            mcp = mcp_client.MCPGroup()
+            try:
+                mcp.connect(servers)
+            except mcp_client.MCPError as e:
+                print(f"  ! MCP connect failed: {e}")
+                return 1
+            names = mcp.tool_names()
+            print(f"  mcp tools ({len(names)}): {', '.join(names)}")
+            want = None
+            if a.tools:
+                want = [w.strip() for w in a.tools.split(",") if w.strip()]
+                missing = [w for w in want if w not in names]
+                if missing:
+                    print(f"  ! not in the server's list: {', '.join(missing)}")
+                    want = [w for w in want if w in names]
+                if not want:
+                    print("  ! empty tool allowlist after filtering")
+                    return 1
+            tools = [t for t in mcp.tools()
+                     if want is None or t["function"]["name"] in want]
+            executor = mcp.call
     if a.no_serve:
-        repl(eng)
+        repl(eng, tools, executor, a.tool_hops)
     else:
-        serve(eng, a.port, a.host)
+        serve(eng, a.port, a.host, tools, executor, a.tool_hops,
+              tool_cleanup=(mcp.close if tools is not None else None))
     return 0
 
 
