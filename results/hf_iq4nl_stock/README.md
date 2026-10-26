@@ -29,4 +29,13 @@ Measured on an AMD Ryzen AI Max+ 395 (Radeon 8060S, 96 GB unified):
 graders, greedy decoding) it scores 22/24 — the same as the exact-Q8_0
 materialization of the parent container, at 54% of a stock q8_0 file's size.
 
+## Context capacity with digit KV (fork `k9`)
+
+This file is the weights tier of the long-context configuration: with the
+ninths KV digit caches live in the fork's flash attention
+(`--cache-type-k/v k9_4kv`, gated against the CPU reference), the KV budget
+on the same 96 GB unified-memory box reaches roughly **700k tokens of live
+context** (~50 GB per million tokens at 4.25 bits/KV-elem for this model's
+47×8×128 KV geometry, vs ~99 GB at q8_0 cache). Status and the open
+integration item are documented on the main ninths card.
 MIT license (inherited from the base model).

@@ -128,6 +128,36 @@ variants below).
 v1 files keep loading on every build; v2 files are rejected loudly by older
 builds (they look for a directory KV that v1 readers ignore).
 
+## KV digit containers in flash attention (fork `k9`, rung landed)
+
+The ninths digit grid now applies to the KV cache too: fork `k9` commits
+`831f95a7b`+ add `--cache-type-k/v k9_4kv` / `k9_6kv` — 64-code superblocks
+with per-block fp16 scales and pre-biased codes, decoded inside the
+flash-attention kernels on HIP, gate-verified against the CPU reference
+(`SET_ROWS` + `FLASH_ATTN_EXT` byte-comparisons on gfx1151). The cache tier
+decides long-context capacity: this model's KV geometry (47 layers ×
+8 kv-heads × 128 dim) costs **187 KB/token at bf16**:
+
+| KV tier | bits/elem | size per 1M-token context |
+|---|---|---|
+| bf16 | 16 | ~187 GB |
+| q8_0 (today's server default) | 8.5 | ~99 GB |
+| k9_6kv | 6.25 design (current gated layout 8.25) | ~73 GB (96 today) |
+| k9_4kv | 4.25 | ~50 GB |
+
+With the 59 GiB IQ4_NL export above, a 96 GB unified-memory box holds
+roughly **700k tokens of live KV at k9_4kv** — the full 1M lands once the
+resident k9_4 weight containers (4.25 b/p, GPU matmul rung queued) or a
+thinner tier carries the weights, or the context-file layer carries the
+tail beyond the hot window.
+
+Status: gates green, live serving with digit KV generates coherently, and
+one integration item is being closed before the capacity ladder is
+re-measured end-to-end — the multi-token prefill path shows perplexity
+damage the isolated gates don't reproduce (tracked in the fork's `k9`
+commit log). Treat `k9_4kv` as experimental for quality until that closes;
+byte-exactness of the codec itself is unaffected.
+
 ## Notes
 
 - The GGUF metadata keys are `ninths.*` (legacy files with `k9.*` keys still
