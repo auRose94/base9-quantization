@@ -1,0 +1,2 @@
+tag,arm,draw,success,steps,checks,checks_passed,checks_total,cum_prompt_tokens,gen_tokens,wall_s,resident_tool_bytes,file_chars,ctx_edits,boss_bytes
+smoke2,clm,1,True,15,"header_line:p,extends_unit:p,take_damage_sig:p,super_call:p,speed_scale:p,no_export_range:p",6,6,129318,1477,104.2,3693,4508,0,625

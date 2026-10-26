@@ -1,0 +1,3 @@
+tag,arm,draw,success,steps,checks,checks_passed,checks_total,cum_prompt_tokens,gen_tokens,wall_s,resident_tool_bytes,file_chars,ctx_edits,boss_bytes
+smoke1,stub,1,False,12,"header_line:f,extends_unit:f,take_damage_sig:f,super_call:f,speed_scale:f,no_export_range:f",0,6,28577,462,27.1,3834,-1,0,0
+smoke1,clm,1,False,12,"header_line:f,extends_unit:f,take_damage_sig:f,super_call:f,speed_scale:f,no_export_range:f",0,6,57087,650,45.3,3165,3015,0,0

@@ -1,0 +1,5 @@
+tag,arm,draw,success,steps,checks,checks_passed,checks_total,cum_prompt_tokens,gen_tokens,wall_s,resident_tool_bytes,file_chars,ctx_edits,boss_bytes
+ab1,stub,1,True,16,"header_line:p,extends_unit:p,take_damage_sig:p,super_call:p,speed_scale:p,no_export_range:p",6,6,52533,2074,86.5,4125,-1,0,1144
+ab1,stub,2,True,16,"header_line:p,extends_unit:p,take_damage_sig:p,super_call:p,speed_scale:p,no_export_range:p",6,6,72810,2481,104.4,14269,-1,0,582
+ab1,clm,1,True,11,"header_line:p,extends_unit:p,take_damage_sig:p,super_call:p,speed_scale:p,no_export_range:p",6,6,73290,1733,96.1,3483,4638,0,696
+ab1,clm,2,True,11,"header_line:p,extends_unit:p,take_damage_sig:p,super_call:p,speed_scale:p,no_export_range:p",6,6,84481,1841,110.6,2730,5243,1,681

@@ -87,3 +87,41 @@ ran; the file arm's advantage is expected to open up at real compaction or
    already exist).
 4. rANS-KV cold tier behind a sparse-attention rung (OasisKV / hierarchical
    sparse attention are the design references).
+
+## Agent merge verdict (2026-10-26, GLM-4.5-Air K9-v2 live)
+
+The harness's context file moved into the real agent loop:
+`experiments/agent_k9.py --context-policy clm` (default). Tool payloads over
+600 B are FILED into `## data` with a locator stub left in the history
+instead of being truncated; the current file re-renders as the tail message
+every turn (the history prefix stays byte-stable — the old stub policy
+mutated old tool messages in place, invalidating llama-server's LCP prefix
+cache at every turn); the model edits the file itself via a local `ctx_edit`
+tool carrying the same ops (no fenced-JSON fragility — this model size
+tool-calls natively, the 1.5B edits-block protocol is not needed). File
+pressure note at ~6k chars; hard budget tombstones oldest `## data`
+entries. `--context-policy stub` keeps the pre-merge behavior as the
+baseline arm. Battery: `experiments/agent_k9_battery.py` — seeded repo,
+binding-rules needle at the BOTTOM of docs/conventions.md, agent writes
+enemy/boss.gd, harness verifies the file from disk (6 checks, no model
+self-report). 2 draws/arm on the live K9-v2+MTP server, 16-turn budget:
+
+| arm          | success | steps     | cum prompt tok | resident tool payload | file chars |
+|--------------|---------|-----------|----------------|-----------------------|------------|
+| stub (pre)   | 2/2     | 16.0 (cap)| 62.7k avg      | 3.8–14.3 kB           | —          |
+| clm (filed)  | 2/2     | 11.0      | 78.9k avg      | 2.7–3.5 kB            | 4.6–5.2k   |
+
+Small-scale verdict, honestly: **quality parity** — the needle survives both
+arms because the workspace is small and the stub arm simply re-reads
+conventions.md before writing. **Step economy favors clm** (11 vs 16 turns:
+filed data is already in view; no re-read loop). **Token economy favors stub
+at this scale** — the per-turn tail re-render plus the model's un-pruned
+filing cost more than in-place truncation saved at ~14 kB payload depth, and
+curation never engaged (ctx_edit used once across the battery; the file
+never crossed the pressure threshold). This matches the tuned-rung finding:
+economy crossover needs payloads big enough that stubbing must either
+truncate the needle away or re-read under lean-ctx's repeated-read cache
+stub. Next: a deep-payload battery variant (needle past 50 kB of decoy
+reads) before any real-session claims. Pre-fix smoke rows (lean-ctx path
+sandbox burned turns on /tmp workspaces) are in clm_agent_smoke1.csv for
+the record; harness-debug only.
