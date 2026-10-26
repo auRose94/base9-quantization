@@ -75,6 +75,13 @@ The loader decodes on load; there is no runtime quantization step on top.
 | v1 streams | 73.45 GiB | ~9.4 min | 119 tok/s | 13.4 tok/s |
 | v2 16-lane | 73.46 GiB | ~2.5 min | same | same |
 | stock q8_0 (reference) | 109.4 GiB | ~1.5 min | same | same |
+| stock IQ4_NL export (`GLM-4.5-Air-iq4nl-GGUF` repo) | 59.1 GiB | ~0.5 min | 142 tok/s | 25.8 tok/s; **28.9 tok/s with MTP** |
+
+The IQ4_NL rows use a deterministic re-materialization of the grid (per-32
+block RTN onto the 16-value codebook); behavioral battery: 22/24 on all
+arms incl. speculative (`--spec-type draft-mtp`, greedy-exact, 55% draft
+acceptance). MTP numbers apply to stock llama.cpp builds (upstream
+`--spec-type draft-mtp`) served from either file.
 
 Runtime speed is identical across all three — the format changes only the
 load path: K9 decodes-on-load into the same materialized Q8_0 weights. The

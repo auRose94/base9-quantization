@@ -19,6 +19,10 @@ with a deterministic per-32-block RTN packer, gate-verified byte-exact
 against the fork's runtime materializer. Embedding and output-head tensors
 stay at Q8_0.
 
+With a current llama.cpp build, add `--spec-type draft-mtp` for
+self-speculative decoding: ~28.9 tok/s sustained on long generations
+(55% draft acceptance) — measured on the hardware below.
+
 Measured on an AMD Ryzen AI Max+ 395 (Radeon 8060S, 96 GB unified):
 ~30 s load, ~25.8 tok/s generation with full GPU residency (59 GiB device),
 142 tok/s prompt eval. On a 24-task Godot-4 coding battery (mechanical
