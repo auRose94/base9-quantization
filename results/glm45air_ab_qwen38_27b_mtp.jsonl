@@ -1,0 +1,253 @@
+{
+ "tag": "qwen38_27b_mtp",
+ "port": 18445,
+ "n": 24,
+ "correct": 21,
+ "frac": 0.875,
+ "wall_s": 79.8,
+ "max_tokens": 480,
+ "greedy": true,
+ "thinking": false,
+ "rows": [
+  {
+   "task": "player_move",
+   "finish": "stop",
+   "tokens": 187,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 89
+  },
+  {
+   "task": "area_collision",
+   "finish": "stop",
+   "tokens": 63,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 75
+  },
+  {
+   "task": "timer_await",
+   "finish": "stop",
+   "tokens": 37,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 77
+  },
+  {
+   "task": "instantiate",
+   "finish": "stop",
+   "tokens": 52,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 87
+  },
+  {
+   "task": "tween",
+   "finish": "stop",
+   "tokens": 55,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 81
+  },
+  {
+   "task": "export_var",
+   "finish": "stop",
+   "tokens": 35,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": false,
+   "correct": false,
+   "prompt_tokens": 85
+  },
+  {
+   "task": "file_write",
+   "finish": "stop",
+   "tokens": 71,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 72
+  },
+  {
+   "task": "json_save",
+   "finish": "stop",
+   "tokens": 284,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 81
+  },
+  {
+   "task": "randi",
+   "finish": "stop",
+   "tokens": 40,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 72
+  },
+  {
+   "task": "change_scene",
+   "finish": "stop",
+   "tokens": 52,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 80
+  },
+  {
+   "task": "enum_match",
+   "finish": "stop",
+   "tokens": 128,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 85
+  },
+  {
+   "task": "callable_connect",
+   "finish": "stop",
+   "tokens": 88,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 80
+  },
+  {
+   "task": "raycast2d",
+   "finish": "stop",
+   "tokens": 166,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 88
+  },
+  {
+   "task": "autoload_style",
+   "finish": "stop",
+   "tokens": 46,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 81
+  },
+  {
+   "task": "resource_class",
+   "finish": "stop",
+   "tokens": 31,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": false,
+   "correct": false,
+   "prompt_tokens": 74
+  },
+  {
+   "task": "audio_play",
+   "finish": "stop",
+   "tokens": 76,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 78
+  },
+  {
+   "task": "fps_label",
+   "finish": "stop",
+   "tokens": 55,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 73
+  },
+  {
+   "task": "pause_game",
+   "finish": "stop",
+   "tokens": 63,
+   "must_ok": false,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": false,
+   "prompt_tokens": 81
+  },
+  {
+   "task": "input_poll",
+   "finish": "stop",
+   "tokens": 76,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 80
+  },
+  {
+   "task": "array_sum",
+   "finish": "stop",
+   "tokens": 86,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 93
+  },
+  {
+   "task": "sprite_flip",
+   "finish": "stop",
+   "tokens": 106,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 73
+  },
+  {
+   "task": "state_machine",
+   "finish": "stop",
+   "tokens": 130,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 83
+  },
+  {
+   "task": "camera_follow",
+   "finish": "stop",
+   "tokens": 101,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 75
+  },
+  {
+   "task": "dictionary_iter",
+   "finish": "stop",
+   "tokens": 99,
+   "must_ok": true,
+   "must_not_hit": [],
+   "has_code": true,
+   "correct": true,
+   "prompt_tokens": 76
+  }
+ ]
+}

@@ -261,3 +261,23 @@ contention with the resident GLM server (clean number pending an idle box;
 the model is small enough to fly once the big one isn't sharing the iGPU).
 Docs: `docs/12-k9-container-spec.md` = the v1.0 container spec + conformance
 ladder (5 gates) — the "first-class container" rung.
+
+## Qwen3.8-27B publish (2026-10-26)
+Both artifacts live: `auRose94/Qwen3.8-27B-ninths-k63-e99-GGUF` (container,
+18.31 GiB) + `auRose94/Qwen3.8-27B-iq4nl-GGUF` (stock IQ4_NL, 15.55 GiB,
+audit-CLEAN per gguf_audit.py, loads in ~10 s, correct idiomatic answers
+incl. `.bind()` signal args). The export path took several rounds: an
+elements-vs-bytes pointer bug, a 10 G-cap OOM on the 1.27 B-element embed
+tensors (int64 intermediate = 10 GB!), a broken patch that ate cmd_gate +
+main() from the builder (restored + verified), and a wrong--ref pass1
+(caught at 63 GB via the plan line). All fixed + committed (main @ 4c0c244).
+Serving defaults: glm_k9_serve.sh now defaults to iq4_nl; exact mode =
+`K9_MATERIALIZE=q8_0`.
+
+## Qwen3.8-27B idle-box numbers (2026-10-26, final card values)
+Stock iq4_nl file, solo GPU, 16K ctx: load ~13 s (no decode-on-load),
+pp 134.1 t/s, tg 13.08 t/s plain; `--spec-type draft-mtp`: **27.0 t/s**
+(2.06x), 64% acceptance, 2.93 tok/draft. Battery: 21/24 (fails =
+export_var, resource_class, pause_game — style/trap-tasks). The gated-
+delta-net scan is compute-bound: MTP pays off double here vs the
+attention-heavy GLM config.
