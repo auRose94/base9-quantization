@@ -218,7 +218,7 @@ BINDING = """## Binding style rules (enforced by CI — violating PRs are reject
 CONVENTIONS = SOFT_STYLE + BINDING
 
 
-def seed_workspace(ws: Path) -> None:
+def seed_workspace(ws: Path, deep_modules: int = 0) -> None:
     (ws / "docs").mkdir(parents=True, exist_ok=True)
     (ws / "src").mkdir(parents=True, exist_ok=True)
     (ws / "world").mkdir(exist_ok=True)
@@ -227,6 +227,90 @@ def seed_workspace(ws: Path) -> None:
     (ws / "docs" / "conventions.md").write_text(CONVENTIONS)
     for name, body in DECOYS.items():
         (ws / "world" / name).write_text(body)
+    if deep_modules:
+        for name, body in _deep_decoys(deep_modules).items():
+            (ws / "world" / name).write_text(body)
+
+
+# deep variant: 24 generated ~2 kB modules so the agent accumulates 50+ kB of
+# tool payloads before the write — deep enough that stub truncation sits
+# far in the past and lean-ctx's repeat-cache makes cheap re-reads unreliable
+_CN = ["probe_squad", "wave_timer", "pickup_ring", "ammo_belt", "rail_set",
+       "door_lock", "lift_shaft", "fan_array", "steam_gauge", "spark_trap",
+       "turret_feed", "score_roll", "combo_meter", "ghost_replay", "rank_post",
+       "medal_case", "key_vault", "siren_post", "fog_band", "rain_grid",
+       "sky_drift", "lantern_row", "crate_law", "fuse_box"]
+
+
+def _deep_decoys(n: int) -> dict:
+    out = {}
+    for i, c in enumerate(_CN[:n]):
+        out[f"{c}.gd"] = f"""extends Node
+##{c.replace('_', ' ').title()} subsystem for the neon-jam arena build.
+
+@export var enabled: {['bool', 'int', 'float'][i % 3]} = {['true', '3', '1.25'][i % 3]}
+@export var window: float = 0.35
+var _acc: float = 0.0
+var _ticks: int = 0
+signal {c}_step(x: float)
+
+func _ready() -> void:
+    _ticks = 0
+    _acc = 0.0
+    set_process(enabled)
+
+func step(delta: float) -> float:
+    _acc += delta * {['1.0', '2.0', '0.5'][i % 3]}
+    if _acc >= window:
+        _acc = fmod(_acc, window)
+        _ticks += 1
+        {c}_step.emit(float(_ticks))
+    return _acc
+
+func is_due() -> bool:
+    return _ticks > 0 and _acc <= 0.0
+
+func reset() -> void:
+    _acc = 0.0
+    _ticks = 0
+
+func snapshot() -> Dictionary:
+    return Dictionary(
+        \"enabled\", enabled,
+        \"ticks\", _ticks,
+        \"acc\", _acc)
+func _physics_process(delta: float) -> void:
+    # {c}: steady-state tick, driven by phase {i % 3}
+    var drift := delta * {c.upper()}_RATE
+    step(drift)
+""" + f"""
+## {c}: phase table tuned during the last playtest; entries are (threshold,
+## action) pairs read by the arena coordinator. Keep actions as bare strings;
+## the coordinator maps them to node paths at spawn time.
+const {c.upper()}_PHASES := [{1 + i % 4}.0, \"{['gather', 'burst', 'idle', 'sweep'][i % 4]}\", {2 + i % 5}.0, \"{['hold', 'drift', 'push'][i % 3]}\"]
+
+func apply_phase(ph: int) -> void:
+    var n := mini(ph, {c.upper()}_PHASES.size() - 2)
+    window = float({c.upper()}_PHASES[n])
+    enabled = {c.upper()}_PHASES[n + 1] != \"hold\"
+
+func describe() -> String:
+    var bits := PackedStringArray()
+    bits.append(\"{c} v%d\" % {i % 4})
+    bits.append(\"acc=%.2f\" % _acc)
+    bits.append(\"ticks=%d\" % _ticks)
+    return \", \".join(bits)
+
+const {c.upper()}_RATE := {1.5 + i * 0.25:.2f}
+""" + f"""
+# history: {c} was rebuilt twice — once for the jam cut (single-phase, no
+# signal) and once after the coordinator patch. Do not merge the two
+# step() variants back; the current signal contract is the live one.
+"""
+    return out
+
+
+DEEP_DECOYS = _deep_decoys(24)
 
 
 CHECKS = (
@@ -251,6 +335,18 @@ Write the file with ctx_shell (mkdir -p the enemy dir first). After writing,
 read the file back once and fix any binding rule it breaks. Answer in prose
 when done."""
 
+TASK_DEEP = """The Godot project at {ws} needs a new enemy script. Read these
+three files in full first: {ws}/docs/conventions.md (the project contract —
+every rule under 'Binding style rules' at the bottom is enforced),
+{ws}/src/unit.gd and {ws}/common.gd. Then read at least eight world/*.gd
+modules of your choice to learn the idiom of this codebase (there are many).
+Then create the file {ws}/enemy/boss.gd defining a Boss enemy: it subclasses
+the shared unit base, has 2500 max health, and walks toward the player at the
+project's shared speed constant scaled up 1.5x. Every binding rule must hold
+exactly. Write the file with ctx_shell (mkdir -p the enemy dir first). After
+writing, read the file back once and fix any binding rule it breaks. Answer
+in prose when done."""
+
 
 def verify(boss: Path) -> list:
     if not boss.exists():
@@ -260,13 +356,38 @@ def verify(boss: Path) -> list:
 
 
 def run_one(arm: str, draw: int, ws: Path, port: int, max_turns: int,
-            tag: str, jsonl_path: Path) -> dict:
-    seed_workspace(ws)
-    task = TASK.format(ws=str(ws))
+            tag: str, jsonl_path: Path, task_text: str,
+            file_budget: int | None = None, deep_modules: int = 0) -> dict:
+    seed_workspace(ws, deep_modules=deep_modules)
+    task = task_text.format(ws=str(ws))
     t0 = time.time()
-    ag = run_agent(task, port=port, policy=arm, max_turns=max_turns,
-                   allow=ALLOW, verbose=True)
+    err = ""
+    try:
+        ag = run_agent(task, port=port, policy=arm, max_turns=max_turns,
+                       allow=ALLOW, verbose=True, file_budget=file_budget)
+    except Exception as e:  # noqa: BLE001 — a dead run still becomes a row
+        import urllib.error
+        err = (f"HTTP {e.code}" if isinstance(e, urllib.error.HTTPError)
+               else f"exception: {e}")
+        print(f"[run failed in-place: {err}]", flush=True)
+        ag = None
     wall = time.time() - t0
+    if ag is None:
+        checks = verify(ws / "enemy" / "boss.gd")
+        ok = all(c for _, c in checks)
+        row = {"tag": tag, "arm": arm, "draw": draw, "success": ok,
+               "steps": -1, "error": err,
+               "checks": ",".join(f"{n}:{'p' if c else 'f'}" for n, c in checks),
+               "checks_passed": sum(c for _, c in checks),
+               "checks_total": len(CHECKS),
+               "cum_prompt_tokens": -1, "gen_tokens": -1,
+               "wall_s": round(wall, 1), "resident_tool_bytes": -1,
+               "file_chars": -1, "ctx_edits": -1,
+               "boss_bytes": (ws / "enemy" / "boss.gd").stat().st_size
+               if (ws / "enemy" / "boss.gd").exists() else 0}
+        with jsonl_path.open("a") as fh:
+            fh.write(json.dumps(row) + "\n")
+        return row
     checks = verify(ws / "enemy" / "boss.gd")
     ok = all(c for _, c in checks)
     cum_prompt = sum(r["prompt_tokens"] for r in ag.ledger)
@@ -295,7 +416,15 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=18445)
     ap.add_argument("--max-turns", type=int, default=16)
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--deep", action="store_true", help="extra decoy modules (payload depth)")
+    ap.add_argument("--modules", type=int, default=24,
+                    help="number of extra generated decoy modules for --deep")
+    ap.add_argument("--file-budget", type=int, default=None)
     a = ap.parse_args()
+    max_turns = a.max_turns if not a.deep else max(a.max_turns, 24)
+    file_budget = a.file_budget or (24000 if a.deep else None)
+    task_text = TASK_DEEP if a.deep else TASK
+    deep_modules = a.modules if a.deep else 0
     tag = a.tag or time.strftime("%Y%m%d_%H%M%S")
     csv_path = HERE.parent / "results" / f"clm_agent_{tag}.csv"
     jsonl_path = HERE.parent / "results" / f"clm_agent_{tag}.jsonl"
@@ -311,7 +440,8 @@ def main() -> int:
             if ws.exists():
                 shutil.rmtree(ws)
             print(f"\n===== arm={arm} draw={draw} ws={ws} =====", flush=True)
-            r = run_one(arm, draw, ws, a.port, a.max_turns, tag, jsonl_path)
+            r = run_one(arm, draw, ws, a.port, max_turns, tag, jsonl_path,
+                        task_text, file_budget, deep_modules)
             rows.append(r)
             print(f"RESULT arm={arm} draw={draw} success={r['success']} "
                   f"checks={r['checks']} cum_prompt={r['cum_prompt_tokens']} "
@@ -320,11 +450,14 @@ def main() -> int:
                   f"file_chars={r['file_chars']} "
                   f"ctx_edits={r['ctx_edits']}", flush=True)
     with csv_path.open("w", newline="") as fh:
-        names = list(rows[0].keys())
+        names = ["tag", "arm", "draw", "success", "steps", "error", "checks",
+                 "checks_passed", "checks_total", "cum_prompt_tokens",
+                 "gen_tokens", "wall_s", "resident_tool_bytes", "file_chars",
+                 "ctx_edits", "boss_bytes"]
         wr = csv.DictWriter(fh, fieldnames=names)
         wr.writeheader()
         for r in rows:
-            wr.writerow(r)
+            wr.writerow({k: r.get(k, "") for k in names})
     print(f"\n=== SUMMARY ({csv_path.name}) ===")
     for arm in ["stub", "clm"]:
         rs = [r for r in rows if r["arm"] == arm]

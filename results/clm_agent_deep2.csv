@@ -1,0 +1,3 @@
+tag,arm,draw,success,steps,error,checks,checks_passed,checks_total,cum_prompt_tokens,gen_tokens,wall_s,resident_tool_bytes,file_chars,ctx_edits,boss_bytes
+deep2,stub,1,False,12,,"header_line:p,extends_unit:p,take_damage_sig:f,super_call:f,speed_scale:p,no_export_range:p",4,6,57564,2166,99.9,9541,-1,0,586
+deep2,clm,1,False,-1,HTTP 400,"header_line:f,extends_unit:f,take_damage_sig:f,super_call:f,speed_scale:f,no_export_range:f",0,6,-1,-1,93.2,-1,-1,-1,0

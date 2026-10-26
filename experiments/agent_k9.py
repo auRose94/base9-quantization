@@ -145,12 +145,14 @@ DEFAULT_SYSTEM_CLM = (
 
 class AgentK9:
     def __init__(self, port: int, system: str, tools: list, mcp,
-                 policy: str = "clm", max_turns: int = 12, thinking: bool = False):
+                 policy: str = "clm", max_turns: int = 12, thinking: bool = False,
+                 file_budget: int | None = None):
         self.port = port
         self.policy = policy
         self.max_turns = max_turns
         self.thinking = thinking
         self.mcp = mcp
+        self.file_budget = file_budget or FILE_BUDGET_TOKENS
         self.tools = list(tools) + ([CTX_EDIT_SPEC] if policy == "clm" else [])
         self.system = system
         self.store = ContextStore({"data": ""}) if policy == "clm" else None
@@ -191,7 +193,7 @@ class AgentK9:
     def _enforce_budget(self) -> int:
         """Tombstone oldest ## data entries while over the hard cap."""
         pruned = 0
-        while self._file_est_tokens() > FILE_BUDGET_TOKENS:
+        while self._file_est_tokens() > self.file_budget:
             data = self.store.sections.get("data", "")
             i = data.find("### tool-")
             if i < 0:
@@ -292,7 +294,8 @@ class AgentK9:
 def run_agent(task: str, port: int = 18445, policy: str = "clm",
               max_turns: int = 12, mcp_spec: str = "ctx=lean-ctx mcp",
               allow: str = "", system: str | None = None,
-              thinking: bool = False, mcp=None, verbose: bool = True):
+              thinking: bool = False, mcp=None, verbose: bool = True,
+              file_budget: int | None = None):
     """Programmatic entry: returns the finished AgentK9 (.answer is None on
     max-turns). `mcp` may inject a pre-connected MCPGroup (tests)."""
     import mcp_client
@@ -314,7 +317,7 @@ def run_agent(task: str, port: int = 18445, policy: str = "clm",
     ag = AgentK9(port, system or (DEFAULT_SYSTEM_CLM if policy == "clm" else
                                   DEFAULT_SYSTEM_BASE),
                  tools, mcp, policy=policy, max_turns=max_turns,
-                 thinking=thinking)
+                 thinking=thinking, file_budget=file_budget)
     if verbose:
         print(f"tools: {', '.join(t['function']['name'] for t in tools)}")
     t0 = time.time()
