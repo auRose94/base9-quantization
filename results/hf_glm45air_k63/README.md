@@ -98,12 +98,25 @@ match within noise — the k63/k99 grid costs no measurable task-level quality
 at ~67% of the q8_0 file size. Both arms also run the same speed, since the
 runtime tensor layout is the same.
 
+## Stock-compatible IQ4_NL export
+
+The stream container is source; the load-time target is a choice. For
+runtimes WITHOUT the ninths fork, `glm_k9_build.py materialize --dst iq4_nl`
+writes a stock GGUF (`GLM-4.5-Air-iq4nl-GGUF` on this Hub) that any
+llama.cpp build loads directly — no custom code. Measured on the same box:
+loads in ~30 s, 25.8 tok/s generation (142 tok/s prompt), 59 GB device
+footprint, zero host-side expert buffers. The fork route reaches the same
+quality from the 73.45 GiB container via `K9_MATERIALIZE=iq4_nl` (see
+variants below).
+
 ## Variants
 
 | file | stream format | needs |
 |---|---|---|
 | `GLM-4.5-Air-ninths-k63-e99.gguf` | v1 single-lane rANS | fork `k9` at `14490cf2d` or later |
-| `GLM-4.5-Air-ninths-k63-e99-v2.gguf` | v2 lane-interleaved (16 lanes on large tensors) | fork `k9` at `4c99facb9` or later; loads ~2-6x faster |
+| `GLM-4.5-Air-ninths-k63-e99-v2.gguf` | v2 lane-interleaved (16 lanes on large tensors) | fork `k9` at `4c99facb9` or later; loads in ~2.5 min |
+| `GLM-4.5-Air-ninths-k63-e99-v2.gguf` (+`K9_MATERIALIZE=iq4_nl`) | v2, rematerialized to IQ4_NL at load | same build (`d39bc1d55`+); ~62 GB device-resident, 25 t/s gen |
+| (separate repo) `GLM-4.5-Air-iq4nl-GGUF` | fully materialized stock IQ4_NL | ANY llama.cpp build; no fork needed |
 
 v1 files keep loading on every build; v2 files are rejected loudly by older
 builds (they look for a directory KV that v1 readers ignore).
