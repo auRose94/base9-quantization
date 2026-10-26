@@ -211,3 +211,53 @@ Loader bug found during the rung: K9_MATERIALIZE env raced the
 ninths.materialize KV (KV won, silently q8_0) — precedence is now env > KV >
 default, with warn-level startup traces (k9_load_meta INFO lines never
 reached this build's log sink).
+
+## Stock-compatible iq4_nl export (2026-10-26)
+`glm_k9_build.py materialize --k9gguf <v2 file> --dst iq4_nl` →
+`glm45air_iq4_nl.gguf`, 59.12 GiB (472 materialized + 331 copied, 303 s
+decode+pack with the C packer). Standard GGUF: real shapes (rank-3 experts
+restored from the ref's tensor metadata), no ninths.* KV, name-sorted.
+Validated end-to-end on a stock load path: ~30 s load, correct GDScript
+probe (finish=stop), 25.8 t/s gen / 142 t/s pp at 59 GiB full-GPU —
+identical quality posture to the K9-route iq4_nl arm, no fork required.
+Packer lives in `rans_fast.c` (`k9_pack_iq4nl`, threaded row-chunks via
+ctypes, byte-identical to the fork branch; found+fixed an elements-vs-bytes
+scale-pointer offset in the threaded wrapper along the way — serial ==
+parallel == fork bytes everywhere now).
+HF: `auRose94/GLM-4.5-Air-iq4nl-GGUF` (stock-compatible artifact, public);
+chain armed behind the f16 ref archive; local stock-q8_0 A/B artifact freed
+after its upload verifies (re-derivable in ~167 s from the archived ref).
+
+## MTP rung (2026-10-26 morning)
+`--spec-type draft-mtp` now FITS in the iq4_nl configuration (the earlier
+failure was a q8_0-materialized footprint problem): 59 GiB + draft stack.
+Measured: draft acceptance 55% (2.65 tokens/draft), 25.4-30.1 t/s median
+on the battery, 25.35 t/s over a 700-tok generation (vs 13.4 exact-mode
+baseline), stock iq4_nl file on the STOCK path = 28.85 t/s. Greedy outputs
+unchanged (22/24 battery, identical fail pattern). The MTP speedup applies
+to BOTH artifacts on stock llama.cpp (upstream flag).
+
+## Deployment hygiene (2026-10-26 morning)
+- Server is now `glm-k9-serve`, a cgroup-capped user systemd unit (survives
+  shell teardown; MemoryMax 24G) — the MTP/iq4_nl arms run the same way.
+- f16 reference moving to /mnt/Warehouse3 (DAS) with sha256-verify-then-
+  free, under an idle-io unit (HF private-storage quota blocked the archive
+  upload; local disk was the constraint anyway).
+- Git auth fixed at the ROOT cause: remotes moved https→ssh
+  (git@github.com:auRose94/...); rose's ed25519 key authenticates
+  passphrase-less — both repos now push non-interactively from tool shells.
+- Roadmap note (rose, 2026-10-26): K9-variants of DeepSeek/Qwen/MiMo/
+  Ornith1-5 next; GPT-OSS deferred pending upstream releases.
+
+## Second architecture rung: Qwen3.8-27B (2026-10-26 morning)
+Source: `models/qwen3.8-27b-f16.gguf` (qwen35 arch, hybrid Mamba/attention —
+17 attention blocks + 48 SSM blocks + dense FFNs, 65 + nextn layers, 866
+tensors). K9 build: `qwen38_27b_k63_e99_v2.gguf` = 18.31 GiB (410 K9 tensors
+@ 5.744 b/p + 456 copied) = **36% of the 50.9 GiB f16**. Gates PASS on the
+k99 embed (1.27B-digit stream), a dense ffn_gate, and the fused attn_qkv —
+byte-exact C-loader parity at 16 lanes. Serving (port 18446,
+K9_MATERIALIZE=iq4_nl): loads live, coherent Godot-4 answers, ~13 t/s under
+contention with the resident GLM server (clean number pending an idle box;
+the model is small enough to fly once the big one isn't sharing the iGPU).
+Docs: `docs/12-k9-container-spec.md` = the v1.0 container spec + conformance
+ladder (5 gates) — the "first-class container" rung.

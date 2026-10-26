@@ -1931,3 +1931,50 @@ engine. The real useful rungs: this silicon proof on real containers, then
 4-bit SD + SD high-speed + the streamed-unembed logits demo (~2-min class),
 then the SDRAM working-set stage; the serving-engine tier = a different
 board class entirely.
+
+## 2026-10-25, session 32 — first live serving of K9 at MoE-103B scale: GLM-4.5-Air k63/e99 runs on silicon (gfx1151)
+
+The VRAM blocker from the rank-3 session is gone: `results/glm45air_k63_e99.gguf`
+(73.45 GiB, 472 K9 + 331 copied, 5.706 b/p) passes the final full-GGUF gates
+(byte-exact on real weights for blk.1 attn_q with the stream==k9.encode_tensor
+cross-check, blk.8 rank-3 ffn_down_exps, k99 token_embd — digits/ent8-scales/
+materialized-q8_0 all 0 mismatches, 0.000 ulp) and **serves**: A9 Mega 8060S
+(96 GB BIOS carve + 16 GB default GTT), `build-hip-a9` llama-server,
+`--override-tensor 'blk\.4[0-5]\..*_exps\.weight=CPU'` pins 6 late blocks'
+routed experts (14.1 GB) in system RAM, KV q8_0 @ 8 KiB, `-fa on` — carve
+fills exactly, GTT stays at desktop residue, **no spill**. Load 9.24 min
+(single-core rANS decode of ~74 GB of blobs); pp 119.1 t/s, tg 13.40 t/s
+steady. Probes: valid idiomatic GDScript 4 (circle path); catches the Godot
+Tween.new→create_tween() 3→4 API trap. Loader surprise recorded: without MTP
+flags the whole blk.46 nextn stack (incl. its 3 expert tensors + nextn embed +
+shared_head_head, all already k99'd here) is loaded-but-ignored = −3.8 GB of
+materialized footprint that a `-draft` MTP run would claim back. Full ledger:
+`results/glm45air_k63_smoke.md`; relaunch script `/home/rose/glm_k9_serve.sh`.
+
+**Session 32 addendum — next work item chosen**: rose picked the
+lane-interleaved rANS container ("v2") as the next task after seeing the
+decode-bound load-time numbers (threading the pack moved load 554→545 s;
+profiled: single-lane rANS at ~130–165 MB/s over ~74 GB is the wall). Spec
+written: `docs/11-k9-stream-v2.md` — row-aligned lanes over a shared
+frequency table (bit-exactness preserved by construction), `u32 lane_off` +
+per-lane state trailers, `ninths.directory2` KV so old readers fail loudly
+instead of misdecoding, L = max(1, min(16, blob>>21, rows)); decode target
+~9.4 min → ~1.5–2.5 min, RAM floor drops ~700 MB; gates: random-tensor
+round-trip L∈{1,2,3,16,64}, dual-encode byte-identity, 3-tensor probe gates,
+mini-GGUF end-to-end — all before any re-encode. Legacy v1 stays readable;
+KoboldCpp port needs the same parser or it refuses v2 loudly (noted for
+publish readiness). Stock-q8_0 A/B artifact is ready and unaffected.
+
+**Session 33 (2026-10-26 morning) — spec + second architecture.**
+(1) `docs/12-k9-container-spec.md`: the ninths/K9 container written up as a
+versioned spec — GGUF layout (K9 = 1-D blob tensors + directory KV), v1/v2
+directory records, single-lane vs lane-interleaved streams, ent8 scale
+coding, the materialization contract (q8_0 exact / f16 for permuted /
+iq4_nl deterministic-RTN with k99-aux routing), the 5-gate conformance
+ladder, and the loud-fail versioning policy. "First-class container" = other
+runtimes can now implement against a document, not archaeology.
+(2) Second architecture (rose approved): Qwen3.8-27B (dense, qwen35, 866
+tensors) through the same pipeline — pass1 landed 410 quantized tensors
+(27.29 B params) after the first attempt was caught encoding the GLM ref
+again (missing --ref: the builder's defaults are GLM-shaped; now explicit
+for cross-model runs). Gates + serve-check next; publish = both formats.
