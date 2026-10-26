@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import struct
 import subprocess
@@ -287,266 +288,44 @@ def cmd_pass2(a):
             w.add_tensor_info(m["name"], (m["n"],), np.dtype(np.uint8), m["n"],
                               raw_dtype=gguf.GGMLQuantizationType.K9)
         w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
-        with open(a.spill + ".bin", "rb") as sp:
-            for m in manifest:
-                sp.seek(m["off"])
-                w.write_tensor_data(np.frombuffer(sp.read(m["n"]), dtype=np.uint8))
-        w.close()
-        print(f"mini GGUF: {len(manifest)} K9 tensors -> {a.out}", flush=True)
-        return
-
-    # full build: keep the reference's tensor order for info AND data
-    n_copied = 0
-    total = 0
-    for t in r.tensors:
-        m = by_name.get(t.name)
-        if m:
-            w.add_tensor_info(t.name, (m["n"],), np.dtype(np.uint8), m["n"],
-                              raw_dtype=gguf.GGMLQuantizationType.K9)
-            total += m["n"]
-        else:
-            # reader shape is ne order; the writer reverses numpy-style shapes,
-            # so reverse back or 2-D copies (e.g. the router) store transposed ne
-            w.add_tensor_info(t.name, tuple(int(x) for x in reversed(t.shape)),
-                              t.data.dtype, t.data.nbytes)
-            total += t.data.nbytes
-            n_copied += 1
-    w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
-    with open(a.spill + ".bin", "rb") as sp:
-        for t in r.tensors:
-            m = by_name.get(t.name)
-            if m:
-                sp.seek(m["off"])
-                w.write_tensor_data(np.frombuffer(sp.read(m["n"]), dtype=np.uint8))
-            else:
-                w.write_tensor_data(t.data)
-    w.close()
-    print(f"K9 GGUF: {len(manifest)} K9 + {n_copied} copied tensors, "
-          f"{total/2**30:.2f} GiB -> {a.out}", flush=True)
-
-
-
-def parse_dir2_from_gguf(gguf_path):
-    """Full directory parse (v1/v2) straight from a built GGUF's KV array."""
-    import gguf as _g
-    rr = _g.GGUFReader(gguf_path)
-    fld = None
-    ver = 1
-    for key, v in (("ninths.directory2", 2), ("ninths.directory", 1),
-                   ("k9.directory", 1)):
-        f = rr.get_field(key)
-        if f is not None:
-            fld, ver = f, v
-            break
-    if fld is None:
-        return {}
-    data = b"".join(bytes(np.asarray(x, dtype=np.uint8)) for x in fld.parts[5:])
-    pos = 0
-    if ver == 2:
-        _, n = struct.unpack_from("<HH", data, pos); pos += 4
-    else:
-        (n,) = struct.unpack_from("<H", data, pos); pos += 2
-    recs = {}
-    for _ in range(n):
-        (nl,) = struct.unpack_from("<H", data, pos); pos += 2
-        name = data[pos:pos + nl].decode(); pos += nl
-        rank = data[pos]; pos += 1
-        assert rank == 2
-        dims = struct.unpack_from("<2I", data, pos); pos += 8
-        if ver == 2:
-            kk, group, mode, perm, lanes = data[pos], data[pos+1], data[pos+2], data[pos+3], data[pos+4]
-            pos += 5
-        else:
-            kk, group, mode, perm = data[pos], data[pos+1], data[pos+2], data[pos+3]
-            lanes = 1
-            pos += 4
-        tbl, dig, sca, plen = struct.unpack_from("<4I", data, pos); pos += 16
-        recs[name] = dict(shape=dims, k=kk, group=group, scale_mode=mode,
-                          perm=perm, lanes=lanes, tbl=tbl, dig=dig, sca=sca,
-                          plen=plen)
-    return recs
-
-
-def cmd_materialize(a):
-    """Export a stock-compatible GGUF: decode every K9 stream tensor from the
-    ninths build and write regular GGML-typed weights (no ninths.* KV)."""
-    assert rans_fast.HAVE_FAST
-    import concurrent.futures as cf
-    recs = parse_dir2_from_gguf(a.k9gguf)
-    rr = gguf.GGUFReader(a.k9gguf)
-    # true tensor shapes (incl. rank-3 expert tensors) come from the f16
-    # reference; the K9 blobs only store a flat 2-D frame
-    ne_map = {}
-    rr_ref = gguf.GGUFReader(a.ref) if a.ref else None
-    if rr_ref is not None:
-        for t in rr_ref.tensors:
-            # this gguf-py exposes tensor shapes in GGUF-ne order
-            ne_map[t.name] = tuple(int(x) for x in t.shape)
-    arch = str(bytes(rr.get_field("general.architecture").parts[-1]), "utf-8")
-    w = gguf.GGUFWriter(a.out, arch=arch)
-    for field in rr.fields.values():
-        nm = field.name
-        if nm.startswith("GGUF.") or nm in ("general.architecture",) \
-                or nm.startswith("ninths.") or nm.startswith("k9."):
-            continue
-        val_type = field.types[0]
-        sub = field.types[-1] if val_type == gguf.GGUFValueType.ARRAY else None
-        w.add_key_value(nm, field.contents(), val_type, sub_type=sub)
-
-    def dst_for(rec):
-        return "q8_0" if (a.dst == "iq4_nl" and rec["k"] >= 99) else a.dst
-
-    per_tb = {}
-    for t in sorted(rr.tensors, key=lambda x: x.name):
-        m = recs.get(t.name)
-        if m is None:
-            per_tb[t.name] = None  # verbatim copy
-            w.add_tensor_info(t.name, tuple(int(x) for x in reversed(t.shape)),
-                              t.data.dtype, t.data.nbytes)
-            continue
-        dt = dst_for(m)
-        r_, c_ = m["shape"]
-        n_out = r_ * (c_ // 32) * (34 if dt == "q8_0" else 18)
-        per_tb[t.name] = (m, dt, n_out)
-        # gguf-py wants a byte-shape (last dim in bytes, later converted to
-        # elements); the leading dims must equal reversed(ne_target) so a
-        # rank-3 expert tensor stores (cols, in, n_exp) in GGUF order
-        ne_t = ne_map.get(t.name) or (c_, r_)
-        assert ne_t[0] == c_ and int(np.prod(ne_t[1:])) == r_, (t.name, ne_t, (c_, r_))
-        # byte-shape = reversed(ne) with the fastest dim replaced by row
-        # bytes; gguf-py converts it back and reverses once more -> ne_target
-        bshape = tuple(int(x) for x in reversed(ne_t))[:-1] + (n_out // r_,)
-        w.add_tensor_info(t.name, bshape, np.dtype(np.uint8), n_out,
-                          raw_dtype=gguf.GGMLQuantizationType.IQ4_NL
-                          if dt == "iq4_nl" else gguf.GGMLQuantizationType.Q8_0)
-    w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
 
     t0 = time.time()
     n_q = n_c = 0
-    with open(a.out, "ab") as of:
-        for t in sorted(rr.tensors, key=lambda x: x.name):
-            entry = per_tb.get(t.name)
-            if entry is None:
-                try:
-                    w.write_tensor_data(t.data)
-                except AssertionError:
-                    ti = w.tensors[-1].get(t.name)
-                    print(f"FAIL {t.name}: ti.nbytes={getattr(ti, 'nbytes', '?')} "
-                          f"ti.shape={getattr(ti, 'shape', '?')} dtype={t.data.dtype} "
-                          f"data.nbytes={t.data.nbytes} shape={t.shape}",
-                          flush=True)
-                    raise
-                n_c += 1
-                continue
-            m, dt, n_out = entry
-            blob = np.asarray(t.data, dtype=np.uint8).tobytes()
-            rec = {"name": t.name, "shape": tuple(m["shape"]), "k": m["k"],
-                   "freq": blob[:m["tbl"]],
-                   "digits": blob[m["tbl"]:m["tbl"] + m["dig"]],
-                   "scales": blob[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]],
-                   "scale_mode": m["scale_mode"], "lanes": m["lanes"]}
-            digits = k9.decode_digits_par(rec, workers=a.threads)
-            ms = k9.decode_scales(rec["scales"], m["scale_mode"],
-                                  m["shape"][0] * (m["shape"][1] // m["group"]))
-            data = k9.materialize_from(digits, ms, m["shape"][0], m["shape"][1],
-                                       m["k"], dt)
-            w.write_tensor_data(np.frombuffer(data, dtype=np.uint8))
-            n_q += 1
-            if n_q % 60 == 0:
-                print(f"  materialized {n_q} / {len(per_tb)}  {time.time()-t0:6.0f}s",
-                      flush=True)
+    total = 0
+    for t in sorted(rr.tensors, key=lambda x: x.name):
+        entry = per_tb[t.name]
+        if entry is None:
+            arr = np.asarray(t.data, dtype=t.data.dtype)
+            w.write_tensor_data(arr)
+            n_c += 1
+            total += arr.nbytes
+            del arr
+            continue
+        m, dt, n_out = entry
+        r_, c_ = m["shape"]
+        blob = np.asarray(t.data, dtype=np.uint8)
+        rec = {"name": t.name, "shape": (r_, c_), "k": m["k"],
+               "freq": np.asarray(blob[:m["tbl"]]),
+               "digits": np.asarray(blob[m["tbl"]:m["tbl"] + m["dig"]]),
+               "scales": np.asarray(blob[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]]),
+               "scale_mode": m["scale_mode"], "lanes": m["lanes"]}
+        digits = k9.decode_digits_par(rec, workers=a.threads)
+        del rec, blob
+        ms = k9.decode_scales(np.frombuffer(t.data, dtype=np.uint8)[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]],
+                              m["scale_mode"], r_ * (c_ // m["group"]))
+        cnv = k9.materialize_from(digits, ms, r_, c_, m["k"], dt, as_bytes=False)
+        w.write_tensor_data(cnv)
+        n_q += 1
+        total += cnv.nbytes
+        del cnv, digits, ms
+        if n_q % 120 == 0:
+            print(f"  materialized {n_q} / {len(per_tb)}  {time.time()-t0:6.0f}s "
+                  f"rss_peak_ok", flush=True)
     w.close()
-    import os as _os
-    print(f"stock GGUF: {n_q} materialized + {n_c} copied tensors, "
-          f"{_os.path.getsize(a.out)/2**30:.2f} GiB -> {a.out} "
-          f"({time.time()-t0:.0f}s decode+pack)", flush=True)
-
-def cmd_gate(a):
-    r = gguf.GGUFReader(a.ref)
-    t = next(x for x in r.tensors if x.name == a.tensor)
-    k = plan_k(t.name, t.shape)
-    assert k is not None, f"{a.tensor} is not a quantized tensor"
-    ne0 = int(t.shape[0])
-    frame = t.data.reshape(-1, ne0)
-    rows, cols = frame.shape
-    lanes = read_lane_map(a.gguf).get(a.tensor, 1)
-    print(f"  lanes  : {lanes}")
-    digits, scales = rtn_frame(frame, k)
-    rec = encode_stream(digits, k, scales, lanes=lanes, shape=(rows, cols))
-    rec["shape"] = (rows, cols)
-
-    if a.tensor == "blk.1.attn_q.weight":     # one-time codec cross-check
-        ref_rec = k9.encode_tensor(digits, k, scales, SCALE_MODE,
-                                   lanes=lanes, shape=(rows, cols))
-        for part in ("freq", "digits", "scales"):
-            assert rec[part] == ref_rec[part], f"stream encoder != k9.encode_tensor ({part})"
-        assert rec.get("lanes", 1) == ref_rec.get("lanes", 1)
-        print("  stream encoder byte-identical to k9.encode_tensor", flush=True)
-
-    ok = True
-    dpath = Path("/tmp/glm_gate_digits.bin")
-    p = subprocess.run([PROBE, a.gguf, a.tensor, "digits", str(dpath)],
-                       capture_output=True, text=True)
-    if p.returncode != 0:
-        raise RuntimeError(f"probe digits failed: {p.stdout} {p.stderr}")
-    got = np.fromfile(dpath, dtype=np.uint8)
-    ref = k9.decode_digits(rec)
-    nmis = int(np.count_nonzero(got != ref.reshape(-1)))
-    print(f"  digits : {got.size} values, mismatches={nmis}")
-    ok &= nmis == 0
-
-    spath = Path("/tmp/glm_gate_scales.bin")
-    p = subprocess.run([PROBE, a.gguf, a.tensor, "scales", str(spath)],
-                       capture_output=True, text=True)
-    if p.returncode != 0:
-        raise RuntimeError(f"probe scales failed: {p.stdout} {p.stderr}")
-    got_s = np.fromfile(spath, dtype=np.float32)
-    # ent8 mode stores scales through a 256-level grid: the loader (and the
-    # materialized weights) use the round-tripped values, not the raw maxima
-    rt_scales = k9.decode_scales(rec["scales"], SCALE_MODE, rows * (cols // GROUP))
-    d64 = np.abs(rt_scales.astype(np.float64) - got_s.astype(np.float64))
-    ulp = float(np.max(d64 / np.maximum(np.abs(rt_scales.astype(np.float64)), 1e-30) / 1.19e-7))
-    print(f"  scales : max ulp diff = {ulp:.3f}")
-    ok &= ulp <= 2.0
-
-    wpath = Path("/tmp/glm_gate_weights.bin")
-    dst = getattr(a, "dst", None) or "q8_0"
-    p = subprocess.run([PROBE, a.gguf, a.tensor, "weights", str(wpath)]
-                       + ([dst] if dst in ("f16", "iq4_nl") else []),
-                       capture_output=True, text=True)
-    if p.returncode != 0:
-        raise RuntimeError(f"probe weights failed: {p.stdout} {p.stderr}")
-    rec["shape"] = (rows, cols)
-    canvas = k9.materialize(rec, dst)
-    probed = np.fromfile(wpath, dtype=np.uint8)
-    nmis = int(np.count_nonzero(probed != np.frombuffer(canvas, dtype=np.uint8)))
-    print(f"  weights: {dst} {probed.size} bytes vs python materialize, mismatches={nmis}")
-    ok &= nmis == 0
-    if dst == "iq4_nl" and nmis == 0:
-        # sanity: relative error of the iq4_nl materialization vs the k63 grid
-        g = k9.IQ4NL_VALUES
-        H = (k - 1) // 2
-        blocks = np.frombuffer(canvas, dtype=np.uint8).reshape(-1, 18)
-        d16 = np.ascontiguousarray(blocks[:, :2]).view(np.float16).astype(np.float64).ravel()
-        Lb = np.ascontiguousarray(blocks[:, 2:])
-        num = 0.0
-        den = 0.0
-        CH = 262144
-        for a2 in range(0, rows, CH):
-            e0 = min(rows, a2 + CH)
-            wex = (np.repeat(rt_scales[a2 * (cols // GROUP): e0 * (cols // GROUP)], GROUP)
-                   * (digits[a2 * cols: e0 * cols].astype(np.int64) - H) / H).astype(np.float64)
-            # element t of a block carries code = nibble of Lb; decode order
-            # is lows first, then highs, per block
-            Lc = Lb[a2 * (cols // 32): e0 * (cols // 32)]
-            wq = (np.repeat(d16[a2 * (cols // 32): e0 * (cols // 32)], 32)
-                  * g[np.concatenate([Lc & 0x0F, Lc >> 4], axis=1).ravel()])
-            num += float(np.abs(wq - wex).sum())
-            den += float(np.abs(wex).sum())
-        print(f"  iq4_nl mean rel err vs k63 grid: {100*num/den:.2f}%")
-
-    print(f"GATE {a.tensor}:", "PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    got = os.path.getsize(a.out)
+    print(f"stock GGUF: {n_q} materialized + {n_c} copied, "
+          f"{got/2**30:.2f} GiB written (chain-end expected = header+{total:,}B), "
+          f"{time.time()-t0:.0f}s", flush=True)
 
 
 def main():
@@ -573,21 +352,239 @@ def main():
 
     p3 = sub.add_parser("gate")
     p3.add_argument("--gguf", required=True)
-    p3.add_argument("--ref", default=d_ref)
+    p3.add_argument("--ref", default=None,
+                    help="f16 reference (default: the ninths GLM ref)")
     p3.add_argument("--tensor", required=True)
     p3.add_argument("--dst", default=None, choices=[None, "q8_0", "f16", "iq4_nl"])
     p3.set_defaults(fn=cmd_gate)
 
     p4 = sub.add_parser("materialize")
     p4.add_argument("--k9gguf", required=True)
-    p4.add_argument("--ref", default="/home/rose/glm45air_ref_f16.gguf")
+    p4.add_argument("--ref", default=None,
+                    help="f16 reference GGUF (source of true tensor shapes)")
     p4.add_argument("--out", required=True)
     p4.add_argument("--dst", default="iq4_nl", choices=["q8_0", "iq4_nl"])
     p4.add_argument("--threads", type=int, default=16)
     p4.set_defaults(fn=cmd_materialize)
 
     a = ap.parse_args()
-    raise SystemExit(a.fn(a))
+    raise SystemExit(a.fn(a) or 0)
+
+
+
+
+def cmd_gate(a):
+    ref_path = a.ref or "/home/rose/glm45air_ref_f16.gguf"
+    rdr = gguf.GGUFReader(ref_path)
+    t = next(x for x in rdr.tensors if x.name == a.tensor)
+    k = plan_k(t.name, t.shape)
+    assert k is not None, f"{a.tensor} is not a quantized tensor"
+    ne0 = int(t.shape[0])
+    frame = t.data.reshape(-1, ne0)
+    rows, cols = frame.shape
+    lanes = read_lane_map(a.gguf).get(a.tensor, 1)
+    print(f"  lanes  : {lanes}")
+    digits, scales = rtn_frame(frame, k)
+    rec = encode_stream(digits, k, scales, lanes=lanes, shape=(rows, cols))
+    rec["shape"] = (rows, cols)
+
+    if a.tensor == "blk.1.attn_q.weight":     # one-time codec cross-check
+        ref_rec = k9.encode_tensor(digits, k, scales, SCALE_MODE,
+                                   lanes=lanes, shape=(rows, cols))
+        for part in ("freq", "digits", "scales"):
+            assert rec[part] == ref_rec[part], f"stream encoder != k9.encode_tensor ({part})"
+        assert rec.get("lanes", 1) == ref_rec.get("lanes", 1)
+        print("  stream encoder byte-identical to k9.encode_tensor", flush=True)
+
+    ok = True
+    dpath = Path("/tmp/glm_gate_digits.bin")
+    pp = subprocess.run([PROBE, a.gguf, a.tensor, "digits", str(dpath)],
+                        capture_output=True, text=True)
+    if pp.returncode != 0:
+        raise RuntimeError(f"probe digits failed: {pp.stdout} {pp.stderr}")
+    got = np.fromfile(dpath, dtype=np.uint8)
+    ref = k9.decode_digits(rec)
+    nmis = int(np.count_nonzero(got != ref.reshape(-1)))
+    print(f"  digits : {got.size} values, mismatches={nmis}")
+    ok &= nmis == 0
+
+    spath = Path("/tmp/glm_gate_scales.bin")
+    pp = subprocess.run([PROBE, a.gguf, a.tensor, "scales", str(spath)],
+                        capture_output=True, text=True)
+    if pp.returncode != 0:
+        raise RuntimeError(f"probe scales failed: {pp.stdout} {pp.stderr}")
+    got_s = np.fromfile(spath, dtype=np.float32)
+    rt_scales = k9.decode_scales(rec["scales"], SCALE_MODE, rows * (cols // GROUP))
+    d64 = np.abs(rt_scales.astype(np.float64) - got_s.astype(np.float64))
+    ulp = float(np.max(d64 / np.maximum(np.abs(rt_scales.astype(np.float64)), 1e-30) / 1.19e-7))
+    print(f"  scales : max ulp diff = {ulp:.3f}")
+    ok &= ulp <= 2.0
+
+    wpath = Path("/tmp/glm_gate_weights.bin")
+    dst = getattr(a, "dst", None) or "q8_0"
+    pp = subprocess.run([PROBE, a.gguf, a.tensor, "weights", str(wpath)]
+                        + ([dst] if dst in ("f16", "iq4_nl") else []),
+                        capture_output=True, text=True)
+    if pp.returncode != 0:
+        raise RuntimeError(f"probe weights failed: {pp.stdout} {pp.stderr}")
+    rec["shape"] = (rows, cols)
+    canvas = k9.materialize(rec, dst)
+    probed = np.fromfile(wpath, dtype=np.uint8)
+    nmis = int(np.count_nonzero(probed != np.frombuffer(canvas, dtype=np.uint8)))
+    print(f"  weights: {dst} {probed.size} bytes vs python materialize, mismatches={nmis}")
+    ok &= nmis == 0
+    if dst == "iq4_nl" and nmis == 0:
+        blocks = np.frombuffer(canvas, dtype=np.uint8).reshape(-1, 18)
+        d16v = np.ascontiguousarray(blocks[:, :2]).view(np.float16).astype(np.float64).ravel()
+        Lb = np.ascontiguousarray(blocks[:, 2:])
+        num = 0.0
+        den = 0.0
+        CH = 262144
+        for a2 in range(0, rows, CH):
+            e0 = min(rows, a2 + CH)
+            wex = (np.repeat(rt_scales[a2 * (cols // GROUP): e0 * (cols // GROUP)], GROUP)
+                   * (digits[a2 * cols: e0 * cols].astype(np.int64) - (k - 1) // 2)
+                   / ((k - 1) // 2)).astype(np.float64)
+            Lc = Lb[a2 * (cols // 32): e0 * (cols // 32)]
+            wq = (np.repeat(d16v[a2 * (cols // 32): e0 * (cols // 32)], 32)
+                  * k9.IQ4NL_VALUES[np.concatenate([Lc & 0x0F, Lc >> 4], axis=1).ravel()])
+            num += float(np.abs(wq - wex).sum())
+            den += float(np.abs(wex).sum())
+        print(f"  iq4_nl mean rel err vs k63 grid: {100 * num / den:.2f}%")
+
+    print(f"GATE {a.tensor}:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+
+
+def parse_dir2_from_gguf(gguf_path):
+    """Full directory parse (v1/v2) straight from a built GGUF's KV array."""
+    import gguf as _g
+    rr = _g.GGUFReader(gguf_path)
+    fld = None
+    ver = 1
+    for key, v in (("ninths.directory2", 2), ("ninths.directory", 1),
+                   ("k9.directory", 1)):
+        fl = rr.get_field(key)
+        if fl is not None:
+            fld, ver = fl, v
+            break
+    if fld is None:
+        return {}
+    data = b"".join(bytes(np.asarray(x, dtype=np.uint8)) for x in fld.parts[5:])
+    pos = 0
+    if ver == 2:
+        _, n = struct.unpack_from("<HH", data, pos); pos += 4
+    else:
+        (n,) = struct.unpack_from("<H", data, pos); pos += 2
+    recs = {}
+    for _ in range(n):
+        (nl,) = struct.unpack_from("<H", data, pos); pos += 2
+        name = data[pos:pos + nl].decode(); pos += nl
+        rank = data[pos]; pos += 1
+        assert rank == 2
+        dims = struct.unpack_from("<2I", data, pos); pos += 8
+        if ver == 2:
+            kk, group, mode, perm, lanes = (data[pos], data[pos + 1],
+                                            data[pos + 2], data[pos + 3],
+                                            data[pos + 4])
+            pos += 5
+        else:
+            kk, group, mode, perm = data[pos], data[pos + 1], data[pos + 2], data[pos + 3]
+            lanes = 1
+            pos += 4
+        tbl, dig, sca, plen = struct.unpack_from("<4I", data, pos); pos += 16
+        recs[name] = dict(shape=dims, k=kk, group=group, scale_mode=mode,
+                          perm=perm, lanes=lanes, tbl=tbl, dig=dig, sca=sca,
+                          plen=plen)
+    return recs
+
+
+def cmd_materialize(a):
+    """Export a stock-compatible GGUF: decode every K9 stream tensor and
+    write regular GGML-typed weights (no ninths.* KV in the output)."""
+    assert rans_fast.HAVE_FAST
+    recs = parse_dir2_from_gguf(a.k9gguf)
+    rr = gguf.GGUFReader(a.k9gguf)
+    ne_map = {}
+    if a.ref:
+        rr_ref = gguf.GGUFReader(a.ref)
+        for t in rr_ref.tensors:
+            ne_map[t.name] = tuple(int(x) for x in t.shape)
+    arch = str(bytes(rr.get_field("general.architecture").parts[-1]), "utf-8")
+    w = gguf.GGUFWriter(a.out, arch=arch)
+    for field in rr.fields.values():
+        nm = field.name
+        if nm.startswith("GGUF.") or nm == "general.architecture" \
+                or nm.startswith("ninths.") or nm.startswith("k9."):
+            continue
+        val_type = field.types[0]
+        sub = field.types[-1] if val_type == gguf.GGUFValueType.ARRAY else None
+        w.add_key_value(nm, field.contents(), val_type, sub_type=sub)
+
+    def dst_for(mm):
+        return "q8_0" if (a.dst == "iq4_nl" and mm["k"] >= 99) else a.dst
+
+    per_tb = {}
+    for t in sorted(rr.tensors, key=lambda x: x.name):
+        m = recs.get(t.name)
+        if m is None:
+            per_tb[t.name] = None  # verbatim copy
+            w.add_tensor_info(t.name, tuple(int(x) for x in reversed(t.shape)),
+                              t.data.dtype, t.data.nbytes)
+            continue
+        dt = dst_for(m)
+        r_, c_ = m["shape"]
+        n_out = r_ * (c_ // 32) * (34 if dt == "q8_0" else 18)
+        per_tb[t.name] = (m, dt, n_out)
+        ne_t = ne_map.get(t.name) or (c_, r_)
+        assert ne_t[0] == c_ and int(np.prod(ne_t[1:])) == r_, (t.name, ne_t, (c_, r_))
+        # byte-shape = reversed(ne) with the fastest dim replaced by row
+        # bytes; gguf-py converts back and reverses again -> ne_target
+        bshape = tuple(int(x) for x in reversed(ne_t))[:-1] + (n_out // r_,)
+        w.add_tensor_info(t.name, bshape, np.dtype(np.uint8), n_out,
+                          raw_dtype=gguf.GGMLQuantizationType.IQ4_NL
+                          if dt == "iq4_nl" else gguf.GGMLQuantizationType.Q8_0)
+    w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
+
+    t0 = time.time()
+    n_q = n_c = 0
+    total = 0
+    for t in sorted(rr.tensors, key=lambda x: x.name):
+        entry = per_tb[t.name]
+        if entry is None:
+            arr = np.asarray(t.data, dtype=t.data.dtype)
+            w.write_tensor_data(arr)
+            n_c += 1
+            total += arr.nbytes
+            del arr
+            continue
+        m, dt, n_out = entry
+        r_, c_ = m["shape"]
+        blob = np.asarray(t.data, dtype=np.uint8)
+        rec = {"name": t.name, "shape": (r_, c_), "k": m["k"],
+               "freq": np.asarray(blob[:m["tbl"]]),
+               "digits": np.asarray(blob[m["tbl"]:m["tbl"] + m["dig"]]),
+               "scales": np.asarray(blob[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]]),
+               "scale_mode": m["scale_mode"], "lanes": m["lanes"]}
+        digits = k9.decode_digits_par(rec, workers=a.threads)
+        del rec
+        ms = k9.decode_scales(np.asarray(t.data, dtype=np.uint8)[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]],
+                              m["scale_mode"], r_ * (c_ // m["group"]))
+        cnv = k9.materialize_from(digits, ms, r_, c_, m["k"], dt, as_bytes=False)
+        w.write_tensor_data(cnv)
+        n_q += 1
+        total += cnv.nbytes
+        del cnv, digits, ms
+        if n_q % 120 == 0:
+            print(f"  materialized {n_q} / {len(per_tb)}  {time.time()-t0:6.0f}s",
+                  flush=True)
+    w.close()
+    got = os.path.getsize(a.out)
+    print(f"stock GGUF: {n_q} materialized + {n_c} copied, "
+          f"{got/2**30:.2f} GiB written (chain-end expected = header+{total:,}B), "
+          f"{time.time()-t0:.0f}s", flush=True)
 
 
 if __name__ == "__main__":

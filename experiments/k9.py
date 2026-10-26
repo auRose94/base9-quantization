@@ -433,21 +433,23 @@ def decode_digits_par(rec, workers=16):
     return out
 
 
-def materialize_from(digits, scales, r, c, k, mode="q8_0"):
+def materialize_from(digits, scales, r, c, k, mode="q8_0", as_bytes=True):
     """Materialize decoded digits+scales into GGML block bytes (q8_0 exact /
     iq4_nl RTN). digits: (r*c,) uint8; scales: (r*(c/64),) f32."""
     Hh = (k - 1) // 2
     if mode == "q8_0":
         d16 = (np.asarray(scales, dtype=np.float32).reshape(r, c // 64) / np.float32(Hh)).astype(np.float16)
-        codes = (np.asarray(digits, dtype=np.uint8).reshape(r, c).astype(np.int64) - Hh).astype(np.int8)
+        # uint8 wraparound then int8 view: byte-exact to (digit - H) as int8,
+        # without materializing an int64 intermediate (OOM-safe at 1B+ params)
+        codes = (np.asarray(digits, dtype=np.uint8).reshape(-1) - np.uint8(Hh)).astype(np.int8)
         canvas = np.empty((r * (c // 32), 34), dtype=np.uint8)
         canvas[:, :2] = np.repeat(d16, 2, axis=1).view(np.uint8).reshape(-1, 2)
-        canvas[:, 2:34] = codes.reshape(r, c // 64, 64).reshape(-1, 32).view(np.uint8)
-        return bytes(canvas.reshape(-1))
+        canvas[:, 2:34] = codes.reshape(-1, 32).view(np.uint8)
+        return bytes(canvas.reshape(-1)) if as_bytes else canvas.reshape(-1)
     if mode == "iq4_nl":
         try:
-            return rans_fast.pack_iq4nl(digits, scales, r, c, k,
-                                        threads=16)
+            out = rans_fast.pack_iq4nl(digits, scales, r, c, k, threads=16)
+            return out if as_bytes else np.frombuffer(out, dtype=np.uint8)
         except (AttributeError, RuntimeError):
             pass
         return materialize_iq4_nl(digits, scales, r, c, H=Hh)
@@ -461,3 +463,62 @@ def materialize(rec, mode="q8_0"):
     digits = decode_digits_par(rec)
     ms = decode_scales(rec["scales"], sm, r * (c // 64))
     return materialize_from(digits, ms, r, c, rec["k"], mode)
+
+
+class ChunkedLaneDecoder:
+    """Band-wise decode of a (v2-lane) record with bounded memory. Each band
+    re-decodes the needed lane prefixes (rANS is forward-sequential, so a
+    band costs up to one lane-length of extra symbols — noise vs the pack)."""
+
+    def __init__(self, rec, band=33554432, workers=16):
+        self.rec = rec
+        self.r, self.c = rec["shape"]
+        self.L = int(rec.get("lanes", 1) or 1)
+        self.band = max(1024, band)
+        self.workers = workers
+        self.f = np.frombuffer(rec["freq"], dtype="<u2").astype(np.int64)
+        self._full = None
+        if self.L > 1:
+            buf = rec["digits"]
+            self.otab = 4 * (self.L + 1)
+            self.offs = np.frombuffer(buf[:self.otab], dtype="<u4")
+            self.sub = buf[self.otab:]
+        else:
+            self.stream = rec["digits"]
+
+    def row_bands(self):
+        p = 0
+        while p < self.r:
+            yield p, min(self.r, p + self.band)
+            p += self.band
+
+    def decode_band(self, a0, b0):
+        n = (b0 - a0) * self.c
+        out = np.empty(n, dtype=np.uint8)
+        if self.L <= 1:
+            if self._full is None:
+                self._full = _dec(self.stream, self.f, self.r * self.c, SCALE_BITS)
+            out[:] = self._full[a0 * self.c: b0 * self.c]
+            return out
+        rows_per = (self.r + self.L - 1) // self.L
+        jobs = []
+        for li in range(self.L):
+            la = min(self.r, li * rows_per)
+            lb = min(self.r, (li + 1) * rows_per)
+            x0, x1 = max(a0, la), min(b0, lb)
+            if x0 >= x1:
+                continue
+            seg = self.sub[int(self.offs[li]): int(self.offs[li + 1])]
+            jobs.append((x0 - a0, seg, (x1 - la) * self.c, (x1 - x0) * self.c))
+
+        import concurrent.futures as cf
+
+        def run(job):
+            dst_off, seg, need, want = job
+            arr = _dec(seg, self.f, need, SCALE_BITS)
+            return dst_off, arr[-want:] if want else arr[:0]
+
+        with cf.ThreadPoolExecutor(max_workers=min(self.workers, len(jobs) or 1)) as ex:
+            for dst_off, arr in ex.map(run, jobs):
+                out[dst_off: dst_off + arr.size] = arr
+        return out
