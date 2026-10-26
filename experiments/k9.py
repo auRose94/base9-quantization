@@ -93,11 +93,40 @@ def decode_scales(buf, mode, n):
 
 
 # ------------------------------------------------------------ tensors ----
-def encode_tensor(digits_u8, k, scales, scale_mode, perm=None):
+def lane_plan(nbytes, rows, want_lanes):
+    """docs/11 rule: L = max(1, min(want, bytes>>21, rows))."""
+    return max(1, min(int(want_lanes), (int(nbytes) + (1 << 21) - 1) >> 21, int(rows)))
+
+
+def encode_tensor(digits_u8, k, scales, scale_mode, perm=None, lanes=1, shape=None):
     flat = np.ascontiguousarray(np.asarray(digits_u8, dtype=np.uint8).reshape(-1))
     f = normalize_freqs(flat.astype(np.int64), k, 1 << SCALE_BITS)
-    return dict(k=int(k), freq=f.astype("<u2").tobytes(),
-                digits=_enc(flat, f, SCALE_BITS),
+    L = 1
+    if shape is not None and lanes and lanes > 1:
+        r0, c0 = int(shape[0]), int(shape[1])
+        L = lane_plan(flat.size, r0, lanes)
+    if L <= 1 or shape is None:
+        return dict(k=int(k), lanes=1, freq=f.astype("<u2").tobytes(),
+                    digits=_enc(flat, f, SCALE_BITS),
+                    scales=encode_scales(scales, scale_mode),
+                    perm=b"" if perm is None else np.asarray(perm, dtype="<u4").tobytes())
+    # v2: row-aligned lane chunks, one rANS state per lane, shared freq table.
+    # lane_off[L+1] are u32 offsets relative to the sub-stream area; each lane
+    # stream is exactly one v1 stream (renorm bytes + trailing BE state).
+    rows, cols = int(shape[0]), int(shape[1])
+    rows_per = (rows + L - 1) // L
+    bounds = [min(rows, i * rows_per) for i in range(L + 1)]
+    chunks = [flat[a * cols: min(rows, bnd) * cols] if bnd > a else flat[:0]
+              for a, bnd in zip(bounds, bounds[1:])]
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(max_workers=min(L, 32)) as ex:
+        streams = list(ex.map(lambda ch: _enc(ch, f, SCALE_BITS), chunks))
+    offs = [0]
+    for st in streams:
+        offs.append(offs[-1] + len(st))
+    head = struct.pack("<%uI" % (L + 1), *offs)
+    return dict(k=int(k), lanes=L, freq=f.astype("<u2").tobytes(),
+                digits=head + b"".join(streams),
                 scales=encode_scales(scales, scale_mode),
                 perm=b"" if perm is None else np.asarray(perm, dtype="<u4").tobytes())
 
@@ -106,7 +135,26 @@ def decode_digits(rec):
     """Decode a record's rANS digit stream (uint8, flat, stored order)."""
     f = np.frombuffer(rec["freq"], dtype="<u2").astype(np.int64)
     r, c = rec["shape"]
-    return _dec(rec["digits"], f, r * c, SCALE_BITS).astype(np.uint8)
+    n = r * c
+    L = int(rec.get("lanes", 1) or 1)
+    if L <= 1:
+        return _dec(rec["digits"], f, n, SCALE_BITS).astype(np.uint8)
+    buf = rec["digits"]
+    otab = 4 * (L + 1)
+    offs = np.frombuffer(buf[:otab], dtype="<u4")
+    assert int(offs[0]) == 0 and int(offs[-1]) == len(buf) - otab, "k9 v2 lane offsets broken"
+    base = otab
+    out = np.empty(n, dtype=np.uint8)
+    rows_per = (r + L - 1) // L
+    for li in range(L):
+        a = min(r, li * rows_per)
+        b = min(r, (li + 1) * rows_per)
+        if a >= b:
+            break
+        seg = buf[base + int(offs[li]): base + int(offs[li + 1])]
+        cnt = (b - a) * c
+        out[a * c: b * c] = _dec(seg, f, cnt, SCALE_BITS)
+    return out
 
 
 def load_into(module, rec, group, device="cpu", row_chunk=0):
@@ -308,3 +356,108 @@ class K9File:
 
     def __exit__(self, *a):
         self.close()
+
+
+# ------------------------------------------------- iq4_nl materialization ----
+IQ4NL_VALUES = np.array([-127, -104, -83, -65, -49, -35, -22, -10,
+                          1,   13,  25,  38,  53,  69,  89, 113], dtype=np.float32)
+
+
+def materialize_iq4_nl(digits, scales, rows, cols, H, group=64, chunk=768):
+    """Vectorized mirror of the fork's k9 iq4_nl materialization branch.
+    Per 32-weight block: d = amax/113 (f16), codes = first-strict-minimum
+    codebook match, qs[j] = L[j] | (L[j+16] << 4). Row-chunked so peak
+    memory stays ~hundreds of MB even for expert tensors."""
+    flat = np.asarray(digits, dtype=np.uint8).reshape(-1)
+    sc = np.asarray(scales, dtype=np.float32).reshape(-1)
+    vals_tab = IQ4NL_VALUES.astype(np.float32)
+    out = np.empty(rows * (cols // 32) * 18, dtype=np.uint8)
+    Hf = np.float32(H)
+    for a in range(0, rows, chunk):
+        b = min(rows, a + chunk)
+        seg = flat[a * cols: b * cols]
+        mrep = np.repeat(sc[a * (cols // group): b * (cols // group)], group)
+        v = (mrep * (seg.astype(np.float32) - Hf)) / Hf
+        blk = v.reshape(-1, 32)
+        amax = np.abs(blk).max(axis=1)
+        d32 = np.where(amax < np.float32(1e-8), np.float32(0),
+                       amax / np.float32(113.0)).astype(np.float32)
+        d16 = d32.astype(np.float16)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            inv = np.where(d32 > 0,
+                           np.float32(1.0) / np.float32(d32), np.float32(0))
+        tgt = (blk * inv[:, None]).astype(np.float32)
+        # (blocks, 32, 16) argmin in one shot; np.argmin keeps the FIRST
+        # minimum on ties, same as the C strict-less scan
+        diff = np.abs(tgt[:, :, None] - vals_tab[None, None, :])
+        L = np.argmin(diff, axis=2).astype(np.uint8)
+        del diff, tgt, blk, v, mrep
+        nb2 = (b - a) * (cols // 32)
+        outb = out[a * (cols // 32) * 18: b * (cols // 32) * 18].reshape(-1, 18)
+        outb[:, :2] = d16.view(np.uint8).reshape(nb2, 2)
+        outb[:, 2:] = L[:, :16] | (L[:, 16:] << np.uint8(4))
+    return out.tobytes()
+
+
+def decode_digits_par(rec, workers=16):
+    """Lane-parallel decode of a (possibly v2) record: each lane decodes its
+    row-aligned chunk independently (ctypes releases the GIL)."""
+    import concurrent.futures as cf
+    L = int(rec.get("lanes", 1) or 1)
+    if L <= 1:
+        return decode_digits(rec)
+    f = np.frombuffer(rec["freq"], dtype="<u2").astype(np.int64)
+    r, c = rec["shape"]
+    buf = rec["digits"]
+    otab = 4 * (L + 1)
+    offs = np.frombuffer(buf[:otab], dtype="<u4")
+    base = otab
+    out = np.empty(r * c, dtype=np.uint8)
+    rows_per = (r + L - 1) // L
+
+    def lane(li):
+        a = min(r, li * rows_per)
+        b = min(r, (li + 1) * rows_per)
+        if a >= b:
+            return None
+        seg = buf[base + int(offs[li]): base + int(offs[li + 1])]
+        cnt = (b - a) * c
+        return a * c, _dec(seg, f, cnt, SCALE_BITS)
+
+    with cf.ThreadPoolExecutor(max_workers=min(L, workers)) as ex:
+        for res in ex.map(lane, range(L)):
+            if res is None:
+                continue
+            a0, arr = res
+            out[a0: a0 + arr.size] = arr
+    return out
+
+
+def materialize_from(digits, scales, r, c, k, mode="q8_0"):
+    """Materialize decoded digits+scales into GGML block bytes (q8_0 exact /
+    iq4_nl RTN). digits: (r*c,) uint8; scales: (r*(c/64),) f32."""
+    Hh = (k - 1) // 2
+    if mode == "q8_0":
+        d16 = (np.asarray(scales, dtype=np.float32).reshape(r, c // 64) / np.float32(Hh)).astype(np.float16)
+        codes = (np.asarray(digits, dtype=np.uint8).reshape(r, c).astype(np.int64) - Hh).astype(np.int8)
+        canvas = np.empty((r * (c // 32), 34), dtype=np.uint8)
+        canvas[:, :2] = np.repeat(d16, 2, axis=1).view(np.uint8).reshape(-1, 2)
+        canvas[:, 2:34] = codes.reshape(r, c // 64, 64).reshape(-1, 32).view(np.uint8)
+        return bytes(canvas.reshape(-1))
+    if mode == "iq4_nl":
+        try:
+            return rans_fast.pack_iq4nl(digits, scales, r, c, k,
+                                        threads=16)
+        except (AttributeError, RuntimeError):
+            pass
+        return materialize_iq4_nl(digits, scales, r, c, H=Hh)
+    raise ValueError(f"unsupported materialize target {mode}")
+
+
+def materialize(rec, mode="q8_0"):
+    """Materialize a record (decodes digits + scales first)."""
+    r, c = rec["shape"]
+    sm = rec.get("scale_mode", 4)  # 4 == ent8 (the only mode we emit today)
+    digits = decode_digits_par(rec)
+    ms = decode_scales(rec["scales"], sm, r * (c // 64))
+    return materialize_from(digits, ms, r, c, rec["k"], mode)

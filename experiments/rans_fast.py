@@ -61,6 +61,10 @@ def _load():
     lib.k9_rans_decode.argtypes = [
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p,
         ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+    lib.k9_pack_iq4nl.restype = ctypes.c_size_t
+    lib.k9_pack_iq4nl.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64,
+        ctypes.c_int, ctypes.c_void_p]
     _lib = lib
     HAVE_FAST = True
 
@@ -112,3 +116,34 @@ def rans_bits_fast(symbols, n_syms, k=12):
     assert np.array_equal(back.astype(np.uint8),
                           np.asarray(symbols, dtype=np.uint8)), "roundtrip"
     return 8.0 * (len(enc) + 4) / len(symbols)
+
+
+def pack_iq4nl(digits, scales, rows, cols, k, threads=1):
+    """C speed iq4_nl packing (byte-exact vs the fork's materializer)."""
+    if not HAVE_FAST or _lib is None:
+        raise RuntimeError("fast iq4_nl packer unavailable")
+    n_out = rows * (cols // 32) * 18
+    digits = np.ascontiguousarray(digits, dtype=np.uint8)
+    scales = np.ascontiguousarray(scales, dtype=np.float32)
+    buf = np.empty(n_out, dtype=np.uint8)
+    if threads <= 1:
+        got = _lib.k9_pack_iq4nl(digits.ctypes.data, scales.ctypes.data,
+                                 rows, cols, int(k), buf.ctypes.data)
+        _ = got and got == n_out or (_ for _ in ()).throw(  # noqa
+            RuntimeError(f"pack_iq4nl short write {got} != {n_out}"))
+        return buf.tobytes()
+    import concurrent.futures as cf
+    rows_per = (rows + threads - 1) // threads
+    buf_sh = buf.reshape(rows, -1)
+
+    def run(a):
+        e = min(rows, a + rows_per)
+        got = _lib.k9_pack_iq4nl(
+            digits.ctypes.data + a * cols, scales.ctypes.data + a * (cols // 64) * scales.itemsize,
+            e - a, cols, int(k), buf_sh[a:].view(np.uint8).ctypes.data)
+        return got == (e - a) * (cols // 32) * 18
+
+    with cf.ThreadPoolExecutor(max_workers=threads) as exo:
+        ok = all(exo.map(run, range(0, rows, rows_per)))
+    assert ok
+    return buf.tobytes()
