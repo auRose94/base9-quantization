@@ -81,6 +81,55 @@ or an act-order/GPTQ-informed K9 pass (exp18's small-model-only lever).
 Load times (HIP, materialize-on-load): K9 26.54 GiB ≈ 36 s; Q8_0 ≈ 15 s;
 IQ4_NL ≈ 12 s.
 
+## PUBLISHED (2026-10-27, rose's go)
+
+- fork branch `k9` pushed: github.com/auRose94/llama.cpp @ `2fafd9ccc`
+  (flint cherry-pick + expand fix + slots-param fix; branch `k9-flint` merged in via ff)
+- base9 repo pushed: eb46e75 → 154045f
+- HF (auRose94): `Flint-40B-A2.5B-ninths-k63-e99-GGUF` (model + README + both
+  chat templates) and `Flint-40B-A2.5B-iq4nl-GGUF` (same)
+- bf16 ref moved to cold storage (DAS verify-then-delete): sha-verified copy at
+  `/run/media/rose/Warehouse 1/.flint_ref/Flint-BF16.gguf` (the /mnt/Warehouse*
+  mountpoints still hold stale stacked mounts → I/O errors; live drives are at
+  /run/media/rose/"Warehouse N" per udisks while the fstab repair settles)
+
+## Budget sensitivity + agentic battery (rose's correction: flint thinks, a lot)
+
+24-task GDScript battery, K9 arm, greedy, thinking mandatory:
+
+| max_tokens | result |
+|---|---|
+| 480 | 4/24 |
+| 1200 | 9/24 |
+| 2500 | 19/24 |
+| **6000** | **22/24 (91.7%), 723.6 s** |
+
+Do not force short max_tokens with Flint — it plans and self-checks inside the
+thinking block and (per rose) can loop there on longer agentic work until
+satisfied.
+
+## llama-bench (16 t, gfx1151, full offload)
+
+| arm | pp512 | tg128 |
+|---|---|---|
+| K9 k63/e99 v2 (runtime = materialized Q8_0) | 1452 ± 31 | 49.86 ± 0.29 |
+| Q8_0 | 1430 ± 20 | 49.95 ± 0.60 |
+| Q4_K_M | 1589 ± 43 | 56.19 ± 0.15 |
+| IQ4_NL (ours) | 1701 ± 77 | 67.43 ± 0.16 |
+
+## exp27 mini-KLD protocol vs BF16 base (60 KB corpus slice)
+
+| candidate | PPL(Q) | PPL(Q)/PPL(base) | ln(PPL(Q)/PPL(base)) ± | Cor |
+|---|---|---|---|---|
+| Q8_0 | 18.9704 | 1.0395 | 0.0388 ± 0.0082 | 98.6% |
+| Q4_K_M | 19.3943 | 1.0628 | 0.0609 ± 0.0119 | 96.9% |
+| K9 k63/e99 | 19.7279 | 1.0811 | 0.0779 ± 0.0110 | 97.5% |
+| IQ4_NL | 22.3863 | 1.2267 | 0.2044 ± 0.0180 | 93.3% |
+
+(base = Flint-BF16, PPL 18.2487 on this slice; kld-base file kept at
+results/flint_ppl/flint_60k.kld for exact mean-KL re-runs — the per-chunk KL
+column was filtered out of this run's capture.)
+
 ## Provenance / housekeeping
 
 - ref kept at `/home/rose/flint_ref/Flint-BF16.gguf` (public, re-downloadable; delete any time)
