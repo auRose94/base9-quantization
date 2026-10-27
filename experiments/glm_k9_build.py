@@ -72,6 +72,21 @@ def plan_k(name: str, ne) -> int | None:
     return K_BODY
 
 
+def frame_f32(t) -> np.ndarray:
+    """(rows, cols) fp32 materialization of a reference tensor view.
+
+    Reference GGUFs are F16 or BF16; the reader hands F16 back as float16 but
+    BF16 as a raw uint8 blob (numpy has no bf16 dtype) — reinterpret pairs and
+    bit-shift into f32 (exact)."""
+    ne0 = int(t.shape[0])
+    if t.tensor_type == gguf.GGMLQuantizationType.BF16:
+        bytes_ = np.asarray(t.data, dtype=np.uint8)
+        u16 = bytes_.view(np.uint16)
+        f32 = (u16.astype(np.uint32) << 16).view(np.float32)
+        return f32.reshape(-1, ne0)
+    return np.asarray(t.data, dtype=np.float32).reshape(-1, ne0)
+
+
 def rtn_frame(frame_f16, k: int):
     """RTN on the (rows, cols) f16 frame view → flat digits u8 + flat scales f32.
 
@@ -192,7 +207,7 @@ def cmd_pass1(a):
                 continue
             k = qmap[t.name]
             ne0 = int(t.shape[0])
-            frame = t.data.reshape(-1, ne0)
+            frame = frame_f32(t)
             assert frame.shape[1] == ne0
             digits, scales = rtn_frame(frame, k)
             lanes = lane_for(frame.shape[0], ne0)
@@ -283,49 +298,49 @@ def cmd_pass2(a):
                     gguf.GGUFValueType.ARRAY, sub_type=gguf.GGUFValueType.UINT8)
     w.add_key_value("ninths.materialize", "q8_0", gguf.GGUFValueType.STRING)
 
+    t0 = time.time()
     if a.mini:
         for m in manifest:
             w.add_tensor_info(m["name"], (m["n"],), np.dtype(np.uint8), m["n"],
                               raw_dtype=gguf.GGMLQuantizationType.K9)
         w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
+        with open(a.spill + ".bin", "rb") as sp:
+            for m in manifest:
+                sp.seek(m["off"])
+                w.write_tensor_data(np.frombuffer(sp.read(m["n"]), dtype=np.uint8))
+        w.close()
+        print(f"mini GGUF: {len(manifest)} K9 tensors -> {a.out} ({time.time()-t0:.0f}s)")
+        return
 
-    t0 = time.time()
-    n_q = n_c = 0
+    # full build: keep the reference's tensor order for info AND data
+    n_copied = 0
     total = 0
-    for t in sorted(rr.tensors, key=lambda x: x.name):
-        entry = per_tb[t.name]
-        if entry is None:
-            arr = np.asarray(t.data, dtype=t.data.dtype)
-            w.write_tensor_data(arr)
-            n_c += 1
-            total += arr.nbytes
-            del arr
-            continue
-        m, dt, n_out = entry
-        r_, c_ = m["shape"]
-        blob = np.asarray(t.data, dtype=np.uint8)
-        rec = {"name": t.name, "shape": (r_, c_), "k": m["k"],
-               "freq": np.asarray(blob[:m["tbl"]]),
-               "digits": np.asarray(blob[m["tbl"]:m["tbl"] + m["dig"]]),
-               "scales": np.asarray(blob[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]]),
-               "scale_mode": m["scale_mode"], "lanes": m["lanes"]}
-        digits = k9.decode_digits_par(rec, workers=a.threads)
-        del rec, blob
-        ms = k9.decode_scales(np.frombuffer(t.data, dtype=np.uint8)[m["tbl"] + m["dig"]:m["tbl"] + m["dig"] + m["sca"]],
-                              m["scale_mode"], r_ * (c_ // m["group"]))
-        cnv = k9.materialize_from(digits, ms, r_, c_, m["k"], dt, as_bytes=False)
-        w.write_tensor_data(cnv)
-        n_q += 1
-        total += cnv.nbytes
-        del cnv, digits, ms
-        if n_q % 120 == 0:
-            print(f"  materialized {n_q} / {len(per_tb)}  {time.time()-t0:6.0f}s "
-                  f"rss_peak_ok", flush=True)
+    for t in r.tensors:
+        m = by_name.get(t.name)
+        if m:
+            w.add_tensor_info(t.name, (m["n"],), np.dtype(np.uint8), m["n"],
+                              raw_dtype=gguf.GGMLQuantizationType.K9)
+            total += m["n"]
+        else:
+            # reader shape is ne order; the writer reverses numpy-style shapes,
+            # so reverse back or 2-D copies (e.g. the router) store transposed ne
+            w.add_tensor_info(t.name, tuple(int(x) for x in reversed(t.shape)),
+                              t.data.dtype, t.data.nbytes)
+            total += t.data.nbytes
+            n_copied += 1
+    w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
+    with open(a.spill + ".bin", "rb") as sp:
+        for t in r.tensors:
+            m = by_name.get(t.name)
+            if m:
+                sp.seek(m["off"])
+                w.write_tensor_data(np.frombuffer(sp.read(m["n"]), dtype=np.uint8))
+            else:
+                w.write_tensor_data(t.data)
     w.close()
     got = os.path.getsize(a.out)
-    print(f"stock GGUF: {n_q} materialized + {n_c} copied, "
-          f"{got/2**30:.2f} GiB written (chain-end expected = header+{total:,}B), "
-          f"{time.time()-t0:.0f}s", flush=True)
+    print(f"stock GGUF: {n_copied} copied + {len(by_name)} K9 tensors, "
+          f"{got/2**30:.2f} GiB written (header+{total:,}B expected), {time.time()-t0:.0f}s")
 
 
 def main():
@@ -380,7 +395,8 @@ def cmd_gate(a):
     k = plan_k(t.name, t.shape)
     assert k is not None, f"{a.tensor} is not a quantized tensor"
     ne0 = int(t.shape[0])
-    frame = t.data.reshape(-1, ne0)
+    frame = frame_f32(t)
+    assert frame.shape[1] == ne0
     rows, cols = frame.shape
     lanes = read_lane_map(a.gguf).get(a.tensor, 1)
     print(f"  lanes  : {lanes}")

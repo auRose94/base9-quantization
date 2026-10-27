@@ -1,0 +1,2 @@
+0.09.623.782 I system_info: n_threads = 16 (n_threads_batch = 16) / 32 | ROCm : NO_VMM = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16,k9_4kv-k9_4kv,k9_4kv-f16,k9_4kv-q8_0,k9_4kv-bf16,k9_6kv-k9_6kv,k9_6kv-f16,k9_6kv-q8_0,k9_6kv-bf16,k9_4kv-k9_6kv,k9_6kv-k9_4kv | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.59.463.045 I Final estimate: PPL = 22.8678 +/- 0.51142
