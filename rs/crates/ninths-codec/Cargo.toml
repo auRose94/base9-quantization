@@ -1,0 +1,9 @@
+[package]
+name = "ninths-codec"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+hex-literal = "0.4"

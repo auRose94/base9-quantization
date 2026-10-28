@@ -64,3 +64,4 @@ fpga/crosscheck/k9_c_harness
 # agent_k9 battery workspaces (regenerable seeds)
 results/agent_k9_ws/
 results/flint_ppl/*.kld
+rs/target/
