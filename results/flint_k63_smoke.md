@@ -130,6 +130,54 @@ satisfied.
 results/flint_ppl/flint_60k.kld for exact mean-KL re-runs — the per-chunk KL
 column was filtered out of this run's capture.)
 
+## Fork synced with upstream master (2026-10-27, rose's go)
+
+- `git merge upstream/master` (514 commits, to `d05706b4f`) onto k9 → merge
+  `c5029ebd4`, pushed. Only 6 conflicted files: llama-vocab.h (pre-type enum),
+  models/flint.cpp add/add (upstream never touched it since the PR → kept ours
+  with the expand fix), tests/test-llama-archs.cpp, llama-model.cpp (took
+  upstream's VLLM_DECISION2 case — the enum now exists), llama-graph.cpp (kept
+  fork's non-slots MoE body at first, then adopted upstream's whole
+  build_lora_mm_id/hadamard/moe_cache machinery since the merge brought it in
+  — callers pass slots), ggml-cpu/arch-fallback.h (k9 fallback defines kept;
+  the q2_0 alias removed where upstream moved the impl to top-level quants.c).
+  Two post-merge fixes: duplicate `llama_model_flint` struct in models.h
+  (auto-merge double-added it) and 7 stale `q2_0` vec-dot aliases (multiple
+  definition at link).
+- Upstream's flint.cpp still ends at `res->t_logits = cur;` with no explicit
+  expand — their framework reaches the output some other way (unresolved by
+  static reading); our explicit call stays, harmless either way. Not reported
+  upstream without rose's own words.
+- Both trees clean-rebuilt (HIP had stale pre-merge objects — full `ninja -t
+  clean` needed; CPU needed the same after a partial-link ABI crash in
+  libllama-common). Sanity: flint loads + serves on both trees post-merge.
+
+## Extreme rungs (rose's request: IQ1_S/IQ2_S-targeting K9, "most degraded but accessible")
+
+`--k-body 5` / `--k-body 3` on the same unmodified pipeline (this required a
+real fix: pass1/gate ignored --k-body and used the module constants — plan_k
+now takes k_body/k_aux):
+
+| rung | GGUF | b/param (486 tensors) | ppl (wiki2 300k) | notes |
+|---|---|---|---|---|
+| k5/e99 | flint_k5_k99_v2.gguf 9.13 GiB | 1.951 | **149,932 ± 6,550** | Cor 31.0%, ln ratio 8.394 — unmoored |
+| k3/e99 | flint_k3_k99_v2.gguf 5.23 GiB | 1.109 | **2.58×10¹⁴** | the far edge |
+
+- Gates: byte-exact at both grids (k5 and k3 pass digits/scales/q8_0-materialize
+  exactly like k63; k99 embed/head exact).
+- Runtime twin test: a stock materialized q8_0 of the k5 weights gives
+  **identical** ppl (149,932.0528 exactly) — the cliff is the grid, not the
+  loader. (Diagnostic twin was built without `--ref` first, which flattened
+  rank-3 experts — materialize silently emits a 2-D frame without the ref's
+  true shapes; --ref is mandatory for MoE archs.)
+- Serving sanity: k5 loads ~20 s, generates degenerate text ("and the first,
+  and the…"). Mechanically accessible, semantically destroyed.
+- Half the Gaussian mass lands exactly on 0 with an RTN 5-level per-64 grid —
+  the ~2 b/p regime needs calibration (imatrix/GPTQ/learned codebooks) that
+  upstream's IQ types also require. Future rung: calibrated k9 grids.
+- Published: `auRose94/Flint-40B-A2.5B-ninths-extreme-GGUF` (both GGUFs + card
+  + templates). GLM-4.5-Air extreme rungs = deferred (rose: another task).
+
 ## Provenance / housekeeping
 
 - ref kept at `/home/rose/flint_ref/Flint-BF16.gguf` (public, re-downloadable; delete any time)

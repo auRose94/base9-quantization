@@ -86,6 +86,15 @@ arch family.
 | **this container (k63/e99)** | **1.0811** | **0.0779 ± 0.0110** | 97.5% |
 | IQ4_NL re-quant | 1.2267 | 0.2044 ± 0.0180 | 93.3% |
 
+## Full size/quality ladder
+
+For the measured extreme rungs — **k5 (9.13 GiB, 1.95 b/param, ppl 149,932)** and
+**k3 (5.23 GiB, 1.11 b/param)** — see
+[`auRose94/Flint-40B-A2.5B-ninths-extreme-GGUF`](https://huggingface.co/auRose94/Flint-40B-A2.5B-ninths-extreme-GGUF)
+(uncalibrated coarse grids: the container machinery is byte-exact at every rung,
+but beyond ~4 bits the pure-RTN grid itself destroys the model; see that card
+for the full ladder and cliff discussion).
+
 ## Reasoning model — give it budget
 
 Flint is reasoning-first and the thinking is mandatory; do not force short

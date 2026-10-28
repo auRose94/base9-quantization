@@ -58,7 +58,7 @@ PROBE = "/home/rose/Work/llama.cpp/build-cpu/bin/llama-k9probe"
 AUX_EXACT = {"token_embd.weight", "output.weight"}
 
 
-def plan_k(name: str, ne) -> int | None:
+def plan_k(name: str, ne, k_body: int = K_BODY, k_aux: int = K_AUX) -> int | None:
     """k for this GGUF tensor, or None to copy it verbatim from the reference."""
     ne = tuple(int(x) for x in ne)
     if len(ne) < 2 or ne[0] % GROUP != 0:
@@ -68,8 +68,8 @@ def plan_k(name: str, ne) -> int | None:
         return None                       # router (ffn_gate_inp) etc. stay dense
     if name in AUX_EXACT or name.endswith("nextn.embed_tokens.weight") \
             or "shared_head_head" in name:
-        return K_AUX
-    return K_BODY
+        return k_aux
+    return k_body
 
 
 def frame_f32(t) -> np.ndarray:
@@ -187,7 +187,7 @@ def cmd_pass1(a):
     p_q = p_cop = blob_bytes = 0
     plan = []
     for t in r.tensors:
-        k = plan_k(t.name, t.shape)
+        k = plan_k(t.name, t.shape, k_body=a.k_body, k_aux=a.k_aux)
         if (k is not None) and (only is None or only.search(t.name)):
             plan.append((t.name, k))
             n_q += 1
@@ -371,6 +371,8 @@ def main():
                     help="f16 reference (default: the ninths GLM ref)")
     p3.add_argument("--tensor", required=True)
     p3.add_argument("--dst", default=None, choices=[None, "q8_0", "f16", "iq4_nl"])
+    p3.add_argument("--k-body", type=int, default=K_BODY)
+    p3.add_argument("--k-aux", type=int, default=K_AUX)
     p3.set_defaults(fn=cmd_gate)
 
     p4 = sub.add_parser("materialize")
@@ -392,7 +394,7 @@ def cmd_gate(a):
     ref_path = a.ref or "/home/rose/glm45air_ref_f16.gguf"
     rdr = gguf.GGUFReader(ref_path)
     t = next(x for x in rdr.tensors if x.name == a.tensor)
-    k = plan_k(t.name, t.shape)
+    k = plan_k(t.name, t.shape, k_body=a.k_body, k_aux=a.k_aux)
     assert k is not None, f"{a.tensor} is not a quantized tensor"
     ne0 = int(t.shape[0])
     frame = frame_f32(t)
