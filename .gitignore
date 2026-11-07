@@ -39,6 +39,9 @@ phase2/out/
 
 # big llama.cpp fork artifacts (session 24)
 results/*.gguf
+# spill blobs (v2/v3 pass1 sidecars) and mix-pipeline .k9s containers
+results/*.bin
+*.k9s
 # exp27 KL-divergence workspace: ~38 GB base-logit file + per-pass logs
 results/kld/
 
@@ -65,3 +68,6 @@ fpga/crosscheck/k9_c_harness
 results/agent_k9_ws/
 results/flint_ppl/*.kld
 rs/target/
+
+# nohup'd llama-server startup output (archive to Warehouse1 research-logs instead)
+nohup.out

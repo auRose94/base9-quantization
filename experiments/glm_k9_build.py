@@ -87,21 +87,29 @@ def frame_f32(t) -> np.ndarray:
     return np.asarray(t.data, dtype=np.float32).reshape(-1, ne0)
 
 
-def rtn_frame(frame_f16, k: int):
+def rtn_frame(frame_f16, k: int, imp=None):
     """RTN on the (rows, cols) f16 frame view → flat digits u8 + flat scales f32.
 
     Grid identical to exp24's quantize_inplace: idx = round((w+m)·H/m), m the
-    per-(row,64) |max|, H=(k-1)//2; decode is w = m·(idx-H)/H."""
+    per-(row,64) |max|, H=(k-1)//2; decode is w = m·(idx-H)/H.
+
+    If `imp` is provided (per-column importance, shape (cols,)), the per-group
+    scale is computed on importance-weighted magnitudes (docs/13 §1.3 item 1).
+    imp == None reproduces the legacy uncalibrated RTN exactly."""
     rows, cols = frame_f16.shape
     ng = cols // GROUP
     H = (k - 1) // 2
+    if imp is None:
+        imp = np.ones(cols, dtype=np.float32)
+    imp = np.asarray(imp, dtype=np.float32).reshape(1, cols, 1)
     digits = np.empty(rows * cols, dtype=np.uint8)
     scales = np.empty(rows * ng, dtype=np.float32)
     for a in range(0, rows, CHUNK_ROWS):
         b = min(rows, a + CHUNK_ROWS)
         Wc = np.ascontiguousarray(frame_f16[a:b], dtype=np.float32)
         Wc = Wc.reshape(b - a, ng, GROUP)
-        m = np.abs(Wc).max(axis=2)
+        impg = imp.reshape(1, ng, GROUP)
+        m = (np.abs(Wc) * impg).max(axis=2)
         msafe = np.maximum(m, 1e-30)
         idx = np.rint((Wc + m[:, :, None]) * (float(H) / msafe)[:, :, None])
         np.clip(idx, 0, k - 1, out=idx)
@@ -109,6 +117,45 @@ def rtn_frame(frame_f16, k: int):
         scales[a * ng:b * ng] = m.reshape(-1)
     return digits, scales
 
+
+def rtn_frame_mse(frame_f16, k: int, imp=None, n_cand: int = 16):
+    """Track A experiment 2: choose per-64-group scale by importance-weighted
+    MSE search over a log-spaced candidate set. Returns digits/scales in the
+    same container format as rtn_frame (digits 0..k-1, m the CHOSE scale)."""
+    rows, cols = frame_f16.shape
+    ng = cols // GROUP
+    H = (k - 1) // 2
+    if imp is None:
+        imp = np.ones(cols, dtype=np.float32)
+    imp = np.asarray(imp, dtype=np.float32).reshape(1, cols, 1)
+    digits = np.empty(rows * cols, dtype=np.uint8)
+    scales = np.empty(rows * ng, dtype=np.float32)
+    ROWS = 64
+    wimp = imp.reshape(1, ng, GROUP)
+    for a in range(0, rows, ROWS):
+        b = min(rows, a + ROWS)
+        Wc = np.ascontiguousarray(frame_f16[a:b], dtype=np.float32).reshape(b - a, ng, GROUP)
+        r, GG, G = Wc.shape
+        aw = wimp  # (1,ng,G)
+        amax_per = np.maximum(np.abs(Wc).max(axis=2), 1e-30)  # (r,GG)
+        best_err = np.full((r, GG), np.inf, dtype=np.float64)
+        best_m = np.zeros((r, GG), dtype=np.float32)
+        best_idx = np.zeros((r, GG, G), dtype=np.int64)
+        for ci in range(n_cand):
+            factor = 0.5 + 1.5 * ci / max(n_cand - 1, 1)
+            m = (amax_per * factor)[:, :, None]
+            m = np.maximum(m, 1e-30)
+            idx = np.rint((Wc + m) * (float(H) / m))
+            np.clip(idx, 0, k - 1, out=idx)
+            dq = m * (idx - H) / H
+            err = np.sum(aw * (dq - Wc) ** 2, axis=2)
+            better = err < best_err
+            best_err = np.where(better, err, best_err)
+            best_m = np.where(better, m[:, :, 0], best_m)
+            best_idx = np.where(better[:, :, None], idx.astype(np.int64), best_idx)
+        digits[a * cols:b * cols] = best_idx.reshape(-1).astype(np.uint8)
+        scales[a * ng:b * ng] = best_m.reshape(-1)
+    return digits, scales
 
 def normalize_from_counts(counts: np.ndarray, M: int):
     """rans.normalize_freqs with the histogram precomputed (avoids the full
@@ -141,8 +188,15 @@ LANE_MAX = 16
 LANE_BYTES = 1 << 21
 
 
-def lane_for(rows: int, cols: int) -> int:
-    """The docs/11 v2 rule, evaluated with the pre-encode digit count."""
+def lane_for(rows: int, cols: int, page_mib: int = 0) -> int:
+    """The docs/11 v2 rule, evaluated with the pre-encode digit count.
+    page_mib > 0 targets v3 paging (docs/13) instead: lanes become pages of
+    ~page_mib MiB over the uncompressed digit frame, capped at 255 (u8 lanes
+    field + fork validator). k63 digits compress to ~0.74 B/weight, so real
+    page sizes land ~25% under target."""
+    if page_mib > 0:
+        target = page_mib << 20
+        return max(1, min(255, (rows * cols + target - 1) // target, rows))
     return k9.lane_plan(rows * cols, rows, LANE_MAX)
 
 
@@ -183,6 +237,14 @@ def cmd_pass1(a):
     assert rans_fast.HAVE_FAST, "refusing the pure-Python coder at 103B params"
     r = gguf.GGUFReader(a.ref)
     only = re.compile(a.only) if a.only else None
+    # Track A calibration: optional importance matrix (npz keyed by tensor name,
+    # each entry a (cols,) float array). None => legacy uncalibrated RTN.
+    imatrix = {}
+    if getattr(a, "imatrix", None):
+        with np.load(a.imatrix) as z:
+            for k_ in z.files:
+                imatrix[k_] = np.asarray(z[k_], dtype=np.float32).reshape(-1)
+        print(f"imatrix loaded: {len(imatrix)} tensors from {a.imatrix}", flush=True)
     n_q = n_cop = 0
     p_q = p_cop = blob_bytes = 0
     plan = []
@@ -209,8 +271,18 @@ def cmd_pass1(a):
             ne0 = int(t.shape[0])
             frame = frame_f32(t)
             assert frame.shape[1] == ne0
-            digits, scales = rtn_frame(frame, k)
-            lanes = lane_for(frame.shape[0], ne0)
+            imp = imatrix.get(t.name, None)
+            if imp is not None and imp.shape[0] != ne0:
+                imp = None  # shape mismatch → fall back to uncalibrated
+            mode = getattr(a, "cal_mode", "none")
+            if mode == "weighted-mse":
+                digits, scales = rtn_frame_mse(frame, k, imp=imp)
+            elif mode == "weighted-amax":
+                digits, scales = rtn_frame(frame, k, imp=imp)
+            else:
+                digits, scales = rtn_frame(frame, k)
+            lanes = lane_for(frame.shape[0], ne0, getattr(a, "page_mib", 0) or 0)
+            rows_per = (frame.shape[0] + lanes - 1) // lanes
             rec = encode_stream(digits, k, scales, lanes=lanes,
                                 shape=(frame.shape[0], ne0))
             blob = rec["freq"] + rec["digits"] + rec["scales"]
@@ -219,7 +291,8 @@ def cmd_pass1(a):
                                  group=GROUP, mode=SCALE_MODE_ID,
                                  tbl=len(rec["freq"]), dig=len(rec["digits"]),
                                  sca=len(rec["scales"]), plen=0,
-                                 lanes=int(lanes), off=off, n=len(blob)))
+                                 lanes=int(lanes), page_rows=int(rows_per),
+                                 off=off, n=len(blob)))
             off += len(blob)
             blob_bytes += len(blob)
             del digits, scales, rec, blob, frame
@@ -228,7 +301,9 @@ def cmd_pass1(a):
                   f"blob={m['n']/1e6:8.2f} MB  {m['n']*8.0/(m['r']*m['c']):.3f} b/p "
                   f"| cum {blob_bytes/1e9:6.2f} GB  {time.time()-t0:6.0f}s", flush=True)
     Path(a.spill + ".json").write_text(json.dumps(
-        dict(ref=a.ref, k_body=a.k_body, k_aux=a.k_aux, records=manifest)))
+        dict(ref=a.ref, k_body=a.k_body, k_aux=a.k_aux,
+             imatrix=getattr(a, "imatrix", None),
+             cal_mode=getattr(a, "cal_mode", "none"), records=manifest)))
     print(f"pass1 done: {len(manifest)} records, {blob_bytes/1e9:.2f} GB blobs "
           f"({blob_bytes*8.0/max(p_q,1):.3f} b/param quantized), "
           f"wall {time.time()-t0:.0f}s", flush=True)
@@ -297,6 +372,10 @@ def cmd_pass2(a):
     w.add_key_value("ninths.directory2", list(np.frombuffer(dir_bytes, dtype=np.uint8)),
                     gguf.GGUFValueType.ARRAY, sub_type=gguf.GGUFValueType.UINT8)
     w.add_key_value("ninths.materialize", "q8_0", gguf.GGUFValueType.STRING)
+    if getattr(a, "pages", False):
+        w.add_key_value("ninths.pages", list(np.frombuffer(
+            build_pages_kv(manifest), dtype=np.uint8)),
+            gguf.GGUFValueType.ARRAY, sub_type=gguf.GGUFValueType.UINT8)
 
     t0 = time.time()
     if a.mini:
@@ -356,6 +435,14 @@ def main():
     p1.add_argument("--only", default=None, help="regex: quantize only matching tensors")
     p1.add_argument("--k-body", type=int, default=K_BODY)
     p1.add_argument("--k-aux", type=int, default=K_AUX)
+    p1.add_argument("--imatrix", default=None,
+                    help="optional npz importance matrix (tensor-name -> (cols,) float)")
+    p1.add_argument("--cal-mode", default="none",
+                    choices=["none", "weighted-amax", "weighted-mse"],
+                    help="calibration scheme applied to body RTN (none/weighted-amax/weighted-mse)")
+    p1.add_argument("--page-mib", type=int, default=0,
+                    help="v3: target page size in MiB over the uncompressed "
+                         "digit frame (0 = legacy docs/11 lane rule, cap 16)")
     p1.set_defaults(fn=cmd_pass1)
 
     p2 = sub.add_parser("pass2")
@@ -363,6 +450,8 @@ def main():
     p2.add_argument("--spill", default=d_spill)
     p2.add_argument("--out", required=True)
     p2.add_argument("--mini", action="store_true")
+    p2.add_argument("--pages", action="store_true",
+                    help="write the ninths.pages KV (v3 paging marker, docs/13)")
     p2.set_defaults(fn=cmd_pass2)
 
     p3 = sub.add_parser("gate")
@@ -373,6 +462,10 @@ def main():
     p3.add_argument("--dst", default=None, choices=[None, "q8_0", "f16", "iq4_nl"])
     p3.add_argument("--k-body", type=int, default=K_BODY)
     p3.add_argument("--k-aux", type=int, default=K_AUX)
+    p3.add_argument("--imatrix", default=None,
+                    help="npz importance matrix for calibrated gates")
+    p3.add_argument("--cal-mode", default="none",
+                    choices=["none", "weighted-amax", "weighted-mse"])
     p3.set_defaults(fn=cmd_gate)
 
     p4 = sub.add_parser("materialize")
@@ -383,6 +476,15 @@ def main():
     p4.add_argument("--dst", default="iq4_nl", choices=["q8_0", "iq4_nl"])
     p4.add_argument("--threads", type=int, default=16)
     p4.set_defaults(fn=cmd_materialize)
+
+    p5 = sub.add_parser("gate-pages",
+                        help="v3 gate: per-lane decode == fresh RTN, KV agreement")
+    p5.add_argument("--gguf", required=True)
+    p5.add_argument("--ref", required=True)
+    p5.add_argument("--spill", required=True)
+    p5.add_argument("--imatrix", default=None)
+    p5.add_argument("--cal-mode", default="none")
+    p5.set_defaults(fn=cmd_gate_pages)
 
     a = ap.parse_args()
     raise SystemExit(a.fn(a) or 0)
@@ -402,7 +504,18 @@ def cmd_gate(a):
     rows, cols = frame.shape
     lanes = read_lane_map(a.gguf).get(a.tensor, 1)
     print(f"  lanes  : {lanes}")
-    digits, scales = rtn_frame(frame, k)
+    imp = None
+    if getattr(a, "imatrix", None):
+        with np.load(a.imatrix) as z:
+            if a.tensor in z.files:
+                imp = np.asarray(z[a.tensor], dtype=np.float32).reshape(-1)
+    mode = getattr(a, "cal_mode", "none")
+    if mode == "weighted-mse":
+        digits, scales = rtn_frame_mse(frame, k, imp=imp)
+    elif mode == "weighted-amax":
+        digits, scales = rtn_frame(frame, k, imp=imp)
+    else:
+        digits, scales = rtn_frame(frame, k)
     rec = encode_stream(digits, k, scales, lanes=lanes, shape=(rows, cols))
     rec["shape"] = (rows, cols)
 
@@ -517,6 +630,112 @@ def parse_dir2_from_gguf(gguf_path):
                           perm=perm, lanes=lanes, tbl=tbl, dig=dig, sca=sca,
                           plen=plen)
     return recs
+
+
+def build_pages_kv(records, version: int = 1) -> bytes:
+    """v3 paging marker (docs/13 §2.3): NEW KV `ninths.pages` alongside
+    directory2 — directory2 stays v2, so existing readers keep decoding whole
+    tensors and unknown KVs are ignored (no corrupt-old-reader); the paged
+    runtime uses this to find pages. A page IS a v2 lane: rows
+    [i*page_rows, min(r, (i+1)*page_rows)), digit stream at the lane offset
+    table inside the record's digit area, shared freq table. Scales stay
+    whole-tensor (ent8) and resident — they are ~1/100th of the digit bytes."""
+    out = bytearray()
+    paged = [m for m in records if int(m.get("lanes", 1)) > 1]
+    out += struct.pack("<HH", version, len(paged))
+    for m in paged:
+        name = m["name"].encode()
+        out += struct.pack("<H", len(name)) + name
+        out += struct.pack("<BI", int(m.get("lanes", 1)),
+                           int(m.get("page_rows", 0)))
+    return bytes(out)
+
+
+def parse_pages_kv(data: bytes) -> dict:
+    pos = 0
+    ver, n = struct.unpack_from("<HH", data, pos); pos += 4
+    out = {"__ver__": ver}
+    for _ in range(n):
+        (nl,) = struct.unpack_from("<H", data, pos); pos += 2
+        name = data[pos:pos + nl].decode(); pos += nl
+        lanes = data[pos]; pos += 1
+        (page_rows,) = struct.unpack_from("<I", data, pos); pos += 4
+        out[name] = dict(lanes=lanes, page_rows=page_rows)
+    return out
+
+
+def cmd_gate_pages(a):
+    """v3 python gate (docs/13 §2.4 #1-2 at container level): every paged
+    tensor must decode lane-by-lane into digits identical to a fresh RTN of
+    the reference tensor, and ninths.pages must agree with directory2."""
+    import gguf as _g
+    man = json.loads(Path(a.spill + ".json").read_text())["records"]
+    by_name = {m["name"]: m for m in man}
+    rr = _g.GGUFReader(a.gguf)
+    fld = rr.get_field("ninths.pages")
+    if fld is None:
+        print("ninths.pages KV missing — not a v3 file")
+        return 1
+    data = b"".join(bytes(np.asarray(x, dtype=np.uint8)) for x in fld.parts[5:])
+    pages = parse_pages_kv(data)
+    d2 = parse_dir2_from_gguf(a.gguf)
+    ref_t = {t.name: t for t in _g.GGUFReader(a.ref).tensors}
+    imp = {}
+    if getattr(a, "imatrix", None):
+        with np.load(a.imatrix) as z:
+            for k_ in z.files:
+                imp[k_] = np.asarray(z[k_], dtype=np.float32).reshape(-1)
+    ok, n = True, 0
+    for name, p in sorted(pages.items()):
+        if name.startswith("__"):
+            continue
+        m = by_name.get(name)
+        if m is None or name not in d2 or name not in ref_t:
+            print(f"  {name}: not in manifest/directory2/reference")
+            ok = False
+            continue
+        rows, cols = d2[name]["shape"]
+        exp_rows_per = (rows + p["lanes"] - 1) // p["lanes"]
+        if d2[name]["lanes"] != p["lanes"] or p["page_rows"] != exp_rows_per:
+            print(f"  {name}: pages/directory2 disagree "
+                  f"(lanes {p['lanes']} vs {d2[name]['lanes']}, "
+                  f"page_rows {p['page_rows']} vs {exp_rows_per})")
+            ok = False
+            continue
+        frame = frame_f32(ref_t[name])
+        if getattr(a, "cal_mode", "none") == "weighted-mse":
+            digits_ref, _ = rtn_frame_mse(frame, d2[name]["k"],
+                                          imp=imp.get(name))
+        else:
+            digits_ref, _ = rtn_frame(frame, d2[name]["k"])
+        with open(a.spill + ".bin", "rb") as sp:
+            sp.seek(m["off"])
+            blob = sp.read(m["n"])
+        f = np.frombuffer(blob[:m["tbl"]], dtype="<u2")
+        otab = 4 * (p["lanes"] + 1)
+        ot = np.frombuffer(blob[m["tbl"]:m["tbl"] + otab], dtype="<u4")
+        if int(ot[p["lanes"]]) != m["dig"] - otab:
+            print(f"  {name}: lane offset tail mismatch")
+            ok = False
+            continue
+        sub = m["tbl"] + otab
+        got = []
+        for li in range(p["lanes"]):
+            aa = min(rows, li * exp_rows_per)
+            bb = min(rows, (li + 1) * exp_rows_per)
+            if aa >= bb:
+                continue
+            st = blob[sub + int(ot[li]):sub + int(ot[li + 1])]
+            got.append(rans_fast.decode_fast(st, f, (bb - aa) * cols,
+                                             k9.SCALE_BITS))
+        got = np.concatenate(got)
+        match = np.array_equal(got, digits_ref)
+        ok &= match
+        n += 1
+        print(f"  {name:44s} lanes={p['lanes']:3d} page_rows={exp_rows_per:6d} "
+              f"digits={'OK' if match else 'MISMATCH'}")
+    print(f"GATE-PAGES: {n} paged tensors -> {'PASS' if ok else 'FAIL'}")
+    return 0 if ok else 1
 
 
 def cmd_materialize(a):
