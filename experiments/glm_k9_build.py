@@ -352,6 +352,17 @@ def read_lane_map(gguf_path) -> dict:
     return lanes_map
 
 
+def _copy_payload(t):
+    """Copy-tensor payload for pass2. BF16 tensors (norms/biases/router in
+    the unsloth BF16 refs) pass through NATIVELY: the typed path rejects
+    bf16, but raw_dtype=GGMLQuantizationType.BF16 + the raw bit bytes writes
+    GGML_TYPE_BF16, which llama.cpp reads natively. Returns
+    (declared_dtype, payload, raw_dtype)."""
+    if t.tensor_type == gguf.GGMLQuantizationType.BF16:
+        return np.dtype(np.float32), t.data, gguf.GGMLQuantizationType.BF16
+    return t.data.dtype, t.data, None
+
+
 def cmd_pass2(a):
     manifest = json.loads(Path(a.spill + ".json").read_text())["records"]
     by_name = {m["name"]: m for m in manifest}
@@ -403,9 +414,10 @@ def cmd_pass2(a):
         else:
             # reader shape is ne order; the writer reverses numpy-style shapes,
             # so reverse back or 2-D copies (e.g. the router) store transposed ne
+            dt, payload, rd = _copy_payload(t)
             w.add_tensor_info(t.name, tuple(int(x) for x in reversed(t.shape)),
-                              t.data.dtype, t.data.nbytes)
-            total += t.data.nbytes
+                              dt, payload.nbytes, raw_dtype=rd)
+            total += payload.nbytes
             n_copied += 1
     w.write_header_to_file(); w.write_kv_data_to_file(); w.write_ti_data_to_file()
     with open(a.spill + ".bin", "rb") as sp:
@@ -415,7 +427,8 @@ def cmd_pass2(a):
                 sp.seek(m["off"])
                 w.write_tensor_data(np.frombuffer(sp.read(m["n"]), dtype=np.uint8))
             else:
-                w.write_tensor_data(t.data)
+                _, payload, _ = _copy_payload(t)
+                w.write_tensor_data(payload)
     w.close()
     got = os.path.getsize(a.out)
     print(f"stock GGUF: {n_copied} copied + {len(by_name)} K9 tensors, "
