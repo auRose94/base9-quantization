@@ -207,6 +207,108 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
   memory-relief paging (M2.5 arena re-pointing / M3 expert-granular, or
   REAP-pruning composition — stock only fits Q2 ≈110 GiB). Ref = unsloth
   BF16 GGUF (upstream has NO glm5_next converter; official repo is FP8).
+- **5.3-Flash k63/e99 v3 container BUILT + GATED (2026-11-07)**:
+  results/glm53flash_k63_e99_v3pages.gguf = 209.86 GiB, 601 K9 tensors
+  (301 paged) + 811 copies; pass1 = 225.12 GB blobs @ 5.616 b/p (1h57m,
+  320.66 B params quantized, 98M copied, 40G MemoryMax cap); pass2 368s.
+  Gates: fork k9_load_meta parses (v3 paged file, 301 registered),
+  `k9probe ALL pages` **PASS, 0 failures** (per-page byte-equal incl.
+  76-lane token_embd/output @ 674 MB each). Serving smoke fails EXACTLY
+  at the designed boundary — k9_buf needs 332,806,701,056 B (in-place
+  Q8_0) > the A9's 128 GB → M2.5 real-budget arena is the next rung.
+- **pass2 bf16 gotcha (cost one container rewrite):** the unsloth BF16
+  refs store norms/biases/router as BF16; gguf-py's typed writer rejects
+  bf16, and an f32-widening workaround produced a writer offset
+  inconsistency (C reader: recorded offset > cumulative declared, +1.5 MB
+  at the first wide hc_*_fn tensor). Correct fix:
+  raw_dtype=GGMLQuantizationType.BF16 + raw bit bytes — lossless, half
+  the size, GGML_TYPE_BF16 read natively. Committed a31a2e7.
+- **M2.5 real-budget arena LANDED (2026-11-07)**, with two findings that
+  correct the plan:
+  1. **Dense-model constrained budgets are semantically impossible at
+     tensor granularity.** All fills happen pre-execution, so a tensor
+     evicted during its own graph's ensure is read (post-fill) at
+     execution with no re-fill in between — unless it is re-decoded at a
+     LATER node of the same pass. Execution-safe victims are therefore
+     `last_use > i` ONLY, and in a dense graph every materialized tensor
+     has `last_use < i` → nothing is ever evictable → the arena must be ≥
+     the working set (= the full model for dense). The v1 "60-eviction
+     soak" is hereby re-interpreted: those evictions were re-decode churn
+     over stale-correct bytes (in-place), never real frees — gate 3's
+     constrained-soak semantics were weaker than assumed. **Gate 3's
+     constrained leg RE-SCOPES to M3 (MoE: selected experts per token →
+     working set < full).** The loader now enforces this with a clear
+     "below this graph's working set" error instead of corrupting.
+  2. **Eviction must free the slot BEFORE poisoning the pointer** — the
+     reordered version (poison first, offset read after) computed every
+     free offset off a nulled pointer and handed out the poison slab as a
+     slot. Symptom: victim slot read as `(2^64 − base)`, decode SEGV in
+     pack_row. Cost the bring-up hour; the comment in evict_until warns.
+  - What M2.5 ships: budget-sized arena (K9_BUDGET_GIB; 0 = full + slack),
+    overlapping dummy homes at a zeroed poison slab (scheduler-invariant
+    preserved), derived residency (resident ⇔ `cur->data != poison` — no
+    bool that can go stale), contiguity-aware eviction (largest span, not
+    byte sums — crumbs can sum past a request while no span fits it),
+    first-fit + adjacency-merged free ranges, self-heal on invalidated
+    state. Gates: eager == resident(full) token-identical (48 + sustained
+    192 tok); peak RSS identical to eager at full budget (arena replaces
+    k9_buf 1:1 — no regression, no win yet); constrained budgets fail
+    LOUDLY with the working-set explanation. **The actual memory relief
+    for 5.3-Flash on the A9 = M3: expert-granular pages hooked at the MoE
+    gather (per-token working set ≈9.5 GiB at Q8_0 → 60-90 GiB budget
+    viable). M2.5 is the substrate M3 reuses.**
+- **M3 LANDED (2026-11-07): expert-granular paging hooked at the MoE
+  gather — the actual memory relief, kernel-measured.**
+  - Design: ONE `MAP_NORESERVE` region backs every K9 tensor at a fixed
+    offset (anonymous zero pages = free poison; no carving, no free lists).
+    Pages = the container's v3 lanes. Non-MoE tensors fill wholly at first
+    graph use (ensure_graph); **MoE expert tensors are hook-managed: the
+    CPU `mul_mat_id` op calls `k9_res_moe_ensure` at EXECUTION time, when
+    the router ids are actually known** — thread 0 decodes the selected
+    experts' lanes, all threads barrier, then the stock kernel runs.
+    Eviction = `madvise(MADV_DONTNEED)`: region pages drop to zero on LRU
+    eviction, and each decoded lane's digit-stream range is dropped from
+    the blob mapping (re-faults from the file on the next decode).
+  - **BUG LEDGER (each cost real time; do not re-learn):**
+    1. The hook MUST be thread-0-guarded — `mul_mat_id` executes per
+       thread; unguarded concurrent calls race the registry (symptom:
+       interleaved eviction counters 1,3,4,2 and "random" bit wipes).
+       Uniform decision on all threads (cheap managed-check) + decode on
+       thread 0 + `ggml_barrier`.
+    2. Per-page budget checks let one op's decode EAT ITS OWN TAIL (each
+       new lane evicts the previous ones; the kernel reads zero pages).
+       Fix = RESERVATION semantics: collect the whole call's lane set,
+       evict only non-set pages until the set fits, then decode.
+    3. Exceptions must not cross ggml-cpu.c's C frames ("terminate called
+       recursively") — the extern-C hook catches and aborts loudly.
+    4. `madvise` REQUIRES page-aligned addresses — raw 64-aligned offsets
+       return EINVAL silently and nothing is ever dropped. Absolute-
+       address alignment helper: inward rounding for region pages
+       (neighbor tensors share 4K pages — a rounded-out drop zeroes a
+       live neighbor), outward for file-backed blob pages (safe to
+       over-drop; re-fault from the file).
+    5. The load-time `MADV_WILLNEED` whole-file prefetch sets peak RSS to
+       the whole GGUF before residency does anything — gated off in
+       resident mode (blob pages re-fault per decode; resident mode never
+       writes into the mapping, so no COW pages exist to lose).
+    6. `RUSAGE_CHILDREN.ru_maxrss` is the MAX over all waited children —
+       sequential measurements in one parent pollute each other. Sample
+       `/proc/PID/status` VmHWM instead.
+  - Gates (OLMoE-1B-7B k63/e99 v3 container, 4.61 GiB, 48 hook-managed
+    expert tensors, 64 experts each):
+    - eager == resident(full) == resident(1.5 GiB budget): **TOKEN-
+      IDENTICAL**; sustained 128-token run TOKEN-IDENTICAL with 91
+      real evictions.
+    - **Peak VmHWM: eager 12021 MiB vs constrained 7971 MiB — Δ4.05 GiB
+      (34%) of kernel-measured memory relief with identical output.**
+  - 5.3-Flash serving math (same machinery): region 310 GiB virtual
+    NORESERVE; non-expert ≈0.5 GiB decoded + expert budget 60-90 GiB →
+    peak ≈8-10 GiB/token working set + budget → **fits the A9's 128 GB;
+    serve via the HIP unified-memory build next.**
+  - Files: src/k9-residency.{h,cpp} (region + pages + hook impl),
+    ggml/include/k9-moe-hook.h (C hook API), ggml/src/ggml-cpu/ggml-cpu.c
+    (mul_mat_id hook), loader resident branch (region homing), llama-mmap
+    (prefetch gate).
 
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
@@ -220,4 +322,52 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 - Publish calibrated k5 as its own HF repo, or re-upload the flint k63 repo
  (storage-quota caution from new-machine notes).
 - imatrix corpus: wiki2 (ppl target) vs the training mix. Risk = overfitting
-  the metric. Recommend training mix + a separate hold-out ppl slice.
+  the metric. Recommend training mix + a separate hold-out ppl slice.+- **M3-HIP session 2026-11-08: three real fixes landed, the residual bug
++  localized to a precise cell.**
++  - FIX 1 (load crash, HIP-only): the upstream iGPU rule (#28160,
++    llama-model.cpp) dropped `use_mmap` when any device reports
++    `mmap_support=false` (the 8060S does) → the first K9 tensor disabled
++    residency mid-load → the next tensor hit `ggml_backend_tensor_alloc`
++    on its dummy buffer → abort. Exempt K9 stream models from the rule
++    (file mmap is independent of the device host-ptr capability the rule
++    targets; the from_ptr buffer path keeps its own
++    `buffer_from_host_ptr_supported` gate), and `k9_prepare_residency`
++    now disables up-front when mmap is off (no region, no mid-load
++    flip-flop).
++  - FIX 2 (prefill garbage): `sched_copy_experts`'s FALLBACK leg (the
++    expert upload when the MoE-cache slot-map path is disabled — cache
++    off, budget too small, or prefill batches above max_batch 32, i.e.
++    EVERY real prefill) uploaded paged bytes straight from the region
++    without decoding. Now decodes the used experts first.
++  - FIX 3 (generic-copy corruption): when the split starts at another op
++    (layer's first matmul), the sched copies the WHOLE weight tensor
++    generically — in resident mode that swept undecoded (zero) region
++    pages into the device buffer. The callback now whole-decodes managed
++    tensors before returning false (idempotent; budget-safe).
++  - FIX 4 (hardening): HIP graph capture disabled for any mul_mat_id
++    graph while residency is active (`k9_residency_is_active()` gate) —
++    replay skips host-side decode hooks; the name-based gate alone missed
++    it because the sched's input copies hide the K9 identity.
++  - **REMAINING BUG (measured, not yet fixed): resident × MoE × GPU =
++    ppl 66,533.6544 (bit-stable across every topology permutation:
++    ±op-offload env, ±graphs, ±FA, ±moe-cache, direct-read
++    pre-assignment, capture gate).** Green: eager at any ngl; resident at
++    -ngl 0 (pure CPU); the DENSE paged container (qwen 1.5B) is
++    bit-perfect at -ngl 99 resident (5.1814 all three modes). Verified
++    IDENTICAL to golden at real windows: region bytes (fill + page
++    hashes), all weight bytes on the device at kernel time (dense +
++    MoE sampled read-backs dev==reg), router ids at window 1 (21 18 46
++    35 55 28 6 41 both builds), embedding activations. DIVERGES: layer-0
++    `ffn_moe_out` at window 1 (CPU golden 9882e5b4 vs HIP 8b5f6fa8).
++    Earlier "ids/activation divergences" were warmup-vs-real-window
++    comparison artifacts. CAUTION: several debug samplers crash inside
++    live HIP graph capture (capture is now gated off under residency, so
++    they are usable again), and debug_expert_fnv had an offset bug
++    (fixed). NEXT: per-layer output taps through layer 0's attention
++    chain (attn_out → residual → ffn_norm) with capture known-off, to
++    find the first divergent activation; the tap harness is in
++    ggml-backend.cpp compute_splits (K9_TAP=name-substring env).
++  - Gate: probes/gate_m3hip_a9.sh (eager vs resident ×cache ×budget on
++    the OLMoE v3pages container; the script's extra-args must be passed
++    UNQUOTED — a quoted "--flag value" string aborts the run silently
++    and produces vacuous PASSes).
