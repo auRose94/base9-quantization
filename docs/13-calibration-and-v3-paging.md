@@ -417,6 +417,42 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    keep the fit-pass guard permanently (e.g. skip capture until the
 +    first REAL execution); (3) re-run the full gate matrix + 5.3-Flash.
 
++- **M3-HIP final round (2026-11-08): every execution-path variant is
++  eliminated; the invariant is RESIDENCY + HIP-PRESENCE.**
++  - New elimination: KV forced to CPU (-nkvo, graphs off, MoE dispatched
++    with hooks, attention on CPU) → ppl 66,625.96 — still broken even
++    though this execution is near-identical to the GREEN -ngl 0 run. The
++    ONLY difference between green and broken in that pair: whether the
++    HIP backend initialized and (in -ngl 99) touched the region pages.
++  - Read-of-elimination (all measured, multiple configs): weight
++    delivery (direct reads / copies / CPU pin / banks), graph capture
++    (K9_GATE_TRACE: 0 mmid captures; FA probe silent after exec 1 =
++    attention/KV splits REPLAY), KV-on-GPU (nkvo), KV-index fills, mask
++    fill, region bytes (CPU view), device weight bytes (GPU view at
++    sampled calls), window-1 router ids, fusion, FA kernel, graphs on/off.
++  - **STANDING THEORY (fits every observation): under HIP/HMM on
++    gfx1151, GPU-faulted pages of the anonymous NORESERVE region diverge
++    from subsequent CPU writes (device-private page or stale IOMMU view)
++    — the retired-HMM finding IS this hardware behavior. CPU-side ops
++    always see their own writes (why -ngl 0 is green); the GPU-side ops
++    see stale pages only where the GPU faulted first (why sampled early
++    reads matched but later data is broken). The pin did not fix it
++    because SOME region-page reader remains on the GPU path (or the
++    divergence taints shared pages the CPU re-reads via different
++    mappings).**
++  - NEXT SESSION (decisive, one experiment): 10-line standalone test —
++    anonymous NORESERVE page → GPU read (fault) → CPU write → GPU read
++    again, under ROCm on gfx1151. If divergence confirmed: the fix is
++    architectural (never let HIP fault region pages: hipMemUnregister
++    hygiene is moot — instead force ALL region reads through explicit
++    copies — the pin already does this for weights, so find the
++    remaining direct reader — OR fall back to eager decode for GPU
++    runs, keeping residency CPU-only and shipping GPU via the
++    IQ4_NL/Q8_0 materialized exports).
++  - Strata engine assessment committed as docs/14 (future ninths-support
++    candidate; MIT; fnx engine + header overlays onto upstream
++    llama.cpp ggml-cuda; Strix Halo = the A9's platform).
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
