@@ -369,6 +369,31 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    the KV-write SET_ROWS-with-indices landing, and the mask/Q as seen
 +    by the FA kernel itself.
 
++- **M3-HIP taps round 3 (2026-11-08, fork 40c6297e7): KV-index fill
++  eliminated; the capture-decision map drawn; ONE suspect standing.**
++  - Verified IDENTICAL eager vs resident: attn_inp_k_idxs/v_idxs fills
++    (idx 0 1 -1 -1 both). Mask fill previously verified. FA outputs
++    (K9_FA_PROBE v2, per-execution in/out) identical at sampled points.
++  - **K9_GATE_TRACE (per-graph capture decisions): ZERO captured
++    mul_mat_id graphs — the CPU-pin + gate work as designed; the MoE ops
++    dispatch on the CPU backend with hooks firing every window (an
++    earlier "only 5 GPU dispatches" reading was a counter-print artifact
++    — prints gate at <=5/1000th calls).**
++  - The HIP-captured graphs = the small attention/KV splits (4/10/12/16/19
++    nodes, mmid=n), REPLAYED every execution with no host dispatch (FA
++    probe silent after exec 1). FA outputs at sampled points identical.
++  - **TOP SUSPECT (next session): stale copy-slot sets in replayed
++    attention splits — GGML_SCHED_MAX_COPIES=4 rotates
++    sched->cur_copy; a replayed graph reads capture-time
++    input_cpy addresses while per-execution copies may land in the
++    rotating slot set → stale mask/Q/K/V/idx reads in replayed
++    attention. Verify by checking how compute_splits picks
++    tensor_id_copy(src, backend, cur_copy) for replayed splits vs what
++    the capture recorded; fix = force n_copies=1 for resident runs or
++    re-record on rotation.** All other stages verified-correct: embd,
++    mask fill+copy, idx fills, region bytes, device weight bytes,
++    window-1 router ids, CPU mul_mat_id+hook dispatch, 0 mmid captures.
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
