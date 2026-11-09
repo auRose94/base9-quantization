@@ -394,6 +394,29 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    mask fill+copy, idx fills, region bytes, device weight bytes,
 +    window-1 router ids, CPU mul_mat_id+hook dispatch, 0 mmid captures.
 
++- **M3-HIP taps round 4 (fork 9a105808a): the FIT-PASS-CAPTURE theory.**
++  - Methodology corrections that re-opened the case: the GPU dispatch
++    counter prints at <=5/1000th calls — "5 prints" NEVER meant "5
++    dispatches" (the mul_mat_id dispatch + hooks run every window);
++    per-token ppl shows token 1 = 72,467 already broken while window-1
++    router ids are golden — broken before the MoE; FA probe silent after
++    exec 1 = the attention splits REPLAY without host dispatch.
++  - **TOP THEORY: the FIT PASS (LOAD_MODE_NONE) executes each graph key
++    FIRST and HIP-captures it with unfilled inputs; real windows replay
++    those captures.** Attention/KV splits replay (benign IF every
++    captured input re-refreshes per window — mask/Q/K/V copies do; rope
++    freqs / K-V rows captured mid-fill are the unverified remainder).
++    The MoE splits dispatch (gate ✓ hooks ✓). Router-ids golden + token-1
++    broken + topology-invariant ppl all fit: the divergence is inside
++    the first-capture/replay boundary, before the MoE.
++  - ELIMINATED (final list): mask fill, K/V idx fills, region bytes,
++    device weight bytes, window-1 ids, weight-delivery mechanism,
++    FA kernel itself, graph capture of MoE splits, fusion.
++  - NEXT (one session): (1) disable the fit pass (or force capture AFTER
++    real fill) and re-gate — the single decisive test; (2) if green,
++    keep the fit-pass guard permanently (e.g. skip capture until the
++    first REAL execution); (3) re-run the full gate matrix + 5.3-Flash.
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
