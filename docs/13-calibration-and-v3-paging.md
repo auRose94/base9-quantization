@@ -346,6 +346,29 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    different split skeleton — OLMoE is the minimal pure-attention
 +    reproducer on this container.
 
++- **M3-HIP surgical taps (2026-11-08 late, fork 9d95e9365): the mask
++  fill is ELIMINATED — and a tap-methodology lesson landed.**
++  - Verified IDENTICAL eager vs resident: the KQ mask fill
++    (set_input_kq_mask, same ROCm_Host buffer, same sentinel values,
++    correct post-fill bytes), inp_pos/k_idxs/v_idxs fills, and the embd.
++  - **Tap-methodology lessons (do not re-learn): (a) named graph inputs
++    are LEAFS — split views carry no leafs; tap them at
++    llama_context::graph_compute on the full graph via the new public
++    ggml_graph_n_leafs/ggml_graph_leaf accessors; (b) naive
++    ggml_backend_tensor_get on ROCm_Host-buffered tensors passes a host
++    pointer as a device source and returns GARBAGE — the "unfilled
++    mask" reading was this artifact, caught by instrumenting the fill
++    itself; (c) prefill mid-split hash taps read recycled compute
++    buffers; (d) the /tmp tmpfiles cleaner races dump files — dumps now
++    live in probes/k9tap.
++  - Standing signal: resident-GPU attention output ≈ zero at decode
++    (ffn_inp |max| 0.05 = embd-only scale vs eager 1.08), invariant to
++    every weight-delivery mechanism. Remaining suspects: the Q/K/V copy
++    content inside the attention split at decode (backend-aware reads
++    required — ROCm_Host and ROCm0 buffers need different read paths),
++    the KV-write SET_ROWS-with-indices landing, and the mask/Q as seen
++    by the FA kernel itself.
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
