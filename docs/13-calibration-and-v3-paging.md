@@ -310,6 +310,42 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
     (mul_mat_id hook), loader resident branch (region homing), llama-mmap
     (prefetch gate).
 
++- **M3-HIP hunt continued (2026-11-08, fork 740c2bd28): the residual
++  bug is INDEPENDENT OF WEIGHT DELIVERY — it is the attention output
++  being ~zero in resident-GPU mode.**
++  - Killed hypotheses (each with a measured test): weight-delivery
++    mechanism (direct GPU reads, per-layer sched copies, CPU-backend pin,
++    MoE-cache banks — ppl 66,533.6544 bit-stable across ALL of them);
++    HIP graph capture (gate off → same value); FA kernel (-fa off →
++    66,586, equally broken); fusion (decoration-tolerant gate → same);
++    D2H copy races (HIP cpy_tensor_async refuses CPU dst → sync path);
++    region bytes, device-side weight bytes, window-1 router ids, embd —
++    all verified identical to golden.
++  - **Decode-mode file-dump taps (deterministic, batch-1): resident
++    ffn_inp-0 (residual after attention) |max| = 0.05 ≈ the embedding
++    scale alone, vs eager 1.08 — the attention contributes ~nothing.
++    embd verified identical (|max| 0.0477 both). FA-off equally broken →
++    the fault sits in the Q/K/V → KV-write → attention chain upstream of
++    the FA kernel, only when residency is active.** CPU-vs-GPU numerics
++    make cross-build hash comparison meaningless — the working method is
++    HIP-eager vs HIP-resident file dumps at decode (tiny tensors, no
++    buffer-recycling ambiguity), NOT prefill FNVs (4 MB intermediate
++    nodes read post-split hit RECYCLED compute-buffer slots — the hash
++    taps on mid-split nodes are unusable at prefill).
++  - Harness: K9_TAP (comma-separated filters) dumps raw f32 files to
++    /tmp/k9tap2 per tap; append-mode after the first 64 taps. Dispatch
++    counters (CPU + GPU mul_mat_id) print at calls 1-5/1000. Region
++    tensors are user-pinned to the CPU backend every execution (defeats
++    ggml pass-4 "4.cur" handing unassigned weight leafs to the GPU).
++  - NEXT: (1) tap the KV-cache write path at decode — check whether the
++    K/V rows actually land in the GPU KV (the attn_inp_k_idxs/v_idxs
++    inputs and the SET_ROWS-with-indices path are candidates); (2) check
++    whether Q (copied CPU→GPU) reads back correctly inside the attention
++    split; (3) if both are clean, diff the mask input. The qwen3.5 dense
++    reference is green because its hybrid (mamba-dominant) graph has a
++    different split skeleton — OLMoE is the minimal pure-attention
++    reproducer on this container.
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
