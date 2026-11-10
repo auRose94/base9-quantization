@@ -453,6 +453,33 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    candidate; MIT; fnx engine + header overlays onto upstream
 +    llama.cpp ggml-cuda; Strix Halo = the A9's platform).
 
++- **M3-HIP ROUND FINAL (2026-11-09): THE SERVER FINDING — the
++  attention input application never runs for real server requests.**
++  - Reproduction: llama-server (resident, OLMoE v3pages, register+pin)
++    raw /completion → token-repeat garbage ("bijection bijection
++    copolymer copolymer ymphonyIdxIdx") while llama-cli with the SAME
++    binary/config/prompt generates coherent text at 130 t/s.
++  - Instrumented `set_input_k_idxs` probe (prints at calls ≤4 and every
++    100th): the server fills the KV-index inputs ONLY at warmup (idx
++    0 1); across a 150-token generation call #100 — guaranteed to print
++    if the function ever runs — NEVER fires. **`llm_graph_input_attn_kv::set_input`
++    (and the whole attention input application: kq_mask, pos, k/v idxs)
++    is never invoked for real server requests.** Every decode replays the
++    graph with the warmup's idx input (0 1): K/V rows overwrite slots
++    0-1 forever, attention reads a 2-token context, model degenerates
++    into token loops.
++  - This retro-explains the ~zero-attention readings (empty indexed KV)
++    and is the prime suspect for the ppl-tool breakage. NOTE: several
++    earlier "garbage input tensor" tap readings were artifacts of naive
++    tensor_get on ROCm_Host buffers — the FILLS themselves are correct
++    wherever they actually run.
++  - NEXT: find why the input application loop skips for server requests
++    in the resident path (llama_context/srv request layer vs the cli
++    path; suspect the graph-reuse/capture interaction with
++    `llm_graph_input_attn_kv::set_input`'s callers), fix, re-gate server
++    + cli + ppl. Decoded-region content, router, idx VALUES, mask fill:
++    all verified correct wherever they run.
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
