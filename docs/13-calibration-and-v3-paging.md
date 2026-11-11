@@ -480,6 +480,39 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    + cli + ppl. Decoded-region content, router, idx VALUES, mask fill:
 +    all verified correct wherever they run.
 
++- **M3-HIP round (2026-11-09 evening): THE SERVER-vs-CLI DECODE
++  TOPOLOGY SPLIT.**
++  - With register+pin active: **llama-cli (raw /completion-equivalent
++    prompts, 20/57/344/674 tokens) is GREEN** at -ngl 99 resident —
++    coherent text at 125-131 t/s, full 512 ubatch + continuation green,
++    -ub 64 green. **llama-server (same binary, same container, same raw
++    prompt via /completion) produces token-repeat garbage** ("asynchron
++    asynchron ... bim bim") at every request, first one included.
++  - **K9_TAP_LAST decode trajectories: the server's decode = 131 splits
++    with 8KB tensors (batch-1 on GPU, mul_mat_id OFFLOADED) while the
++    cli's decode = 2-split (mul_mat_id on CPU with hooks).** The server
++    decodes MoE on the GPU without host decode hooks firing at replay;
++    the cli decodes on the CPU with hooks. Everything inside the server
++    (mask fill #3 = n_tokens=20 ✓, router ids prompt-correct ✓, region
++    decode ✓, idx fills ✓) verifies CORRECT — the delta is the decode
++    topology itself.
++  - ALSO CORRECTED: the "set_input_k_idxs never called for real server
++    requests" conclusion was a print-gate artifact (the probe gate
++    ≤4/100th never reached at ~27 total calls). The mask fill for the
++    real request DID run (#3, n_tokens=20). Input application runs fine
++    on the server. Re-opened honestly.
++  - NEXT: why does the server decode with mul_mat_id on the GPU while
++    the cli decodes on the CPU (slot count? ubatch composition?
++    cparams.op_offload? server's slot-batching)? Candidates: (1) match
++    the cli's decode topology for the server (n_copies/op_offload
++    settings); (2) if the server must keep GPU mul_mat_id at decode,
++    make the callback decode fire on EVERY replay-adjacent path and
++    verify the crossed expert copies per decode; (3) test
++    `--cont-batching off` / slot count 1 to match cli batching. The
++    same topology audit must run for 5.3-Flash serving before trusting
++    it. NOTE: taps now dump to probes/k9tap on Matrix (the /tmp cleaner
++    raced dumps twice).
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
