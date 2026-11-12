@@ -71,3 +71,9 @@ rs/target/
 
 # nohup'd llama-server startup output (archive to Warehouse1 research-logs instead)
 nohup.out
+
+# analog rung: keep CSVs, never the artifacts
+results/analog/*.gguf
+results/analog/logs/
+results/e3_noiseaware/
+results/synapse_char/

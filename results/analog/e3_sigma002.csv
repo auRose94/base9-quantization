@@ -1,0 +1,5 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+sigma0.02,group,0.0,0.0,0.0,0.0,0,0,32,10,34.1944,1.3183,0.8,40.6,/mnt/Matrix/Work/base9-quantization/results/analog/sigma0.02_g_c32_s0_sp0.0000.gguf
+sigma0.02,group,0.01,0.0,0.0,0.0,0,0,32,10,35.0009,1.3352,0.7,28.1,/mnt/Matrix/Work/base9-quantization/results/analog/sigma0.02_g_c32_s0_sp0.0100.gguf
+sigma0.02,group,0.02,0.0,0.0,0.0,0,0,32,10,43.5245,1.6686,0.9,38.6,/mnt/Matrix/Work/base9-quantization/results/analog/sigma0.02_g_c32_s0_sp0.0200.gguf
+sigma0.02,group,0.04,0.0,0.0,0.0,0,0,32,10,153.1533,6.3368,0.9,42.1,/mnt/Matrix/Work/base9-quantization/results/analog/sigma0.02_g_c32_s0_sp0.0400.gguf

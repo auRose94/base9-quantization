@@ -1,0 +1,15 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+k99d,group,0.0,0.0,0.0,0.0,0,0,32,12,12.3405,0.4092,1.5,22.5,/mnt/Matrix/Work/base9-quantization/results/analog/k99d_g_sp0.0000.gguf
+k99d,group,0.005,0.0,0.0,0.0,0,0,32,12,12.3907,0.4109,0.7,22.4,/mnt/Matrix/Work/base9-quantization/results/analog/k99d_g_sp0.0050.gguf
+k99d,group,0.01,0.0,0.0,0.0,0,0,32,12,16.3499,0.5556,0.7,22.3,/mnt/Matrix/Work/base9-quantization/results/analog/k99d_g_sp0.0100.gguf
+k99d,group,0.02,0.0,0.0,0.0,0,0,32,12,2005.0002,88.4772,0.7,22.4,/mnt/Matrix/Work/base9-quantization/results/analog/k99d_g_sp0.0200.gguf
+f16,group,0.01,0.0,0.0,0.0,0,0,32,12,21.4675,0.7600,0.7,22.3,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_sp0.0100_attn.gguf
+f16,group,0.02,0.0,0.0,0.0,0,0,32,12,2614.2920,116.9753,0.7,22.4,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_sp0.0200_attn.gguf
+f16,group,0.01,0.0,0.0,0.0,0,0,32,12,12.3897,0.4110,1.7,22.4,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_sp0.0100_ffn.gguf
+f16,group,0.02,0.0,0.0,0.0,0,0,32,12,12.5971,0.4189,0.7,22.4,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_sp0.0200_ffn.gguf
+f16,group,0.01,0.0,0.0,0.0,0,0,32,12,12.2961,0.4068,1.1,32.8,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_sp0.0100_embed.gguf
+f16,group,0.02,0.0,0.0,0.0,0,0,32,12,12.3528,0.4088,2.1,25.4,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_sp0.0200_embed.gguf
+k15,group,0.01,0.0,0.0,0.0,0,0,32,12,105.8385,4.1004,1.4,33.7,/mnt/Matrix/Work/base9-quantization/results/analog/k15_g_sp0.0100_dz0.02.gguf
+k15,group,0.02,0.0,0.0,0.0,0,0,32,12,4086.0420,184.1420,2.3,34.2,/mnt/Matrix/Work/base9-quantization/results/analog/k15_g_sp0.0200_dz0.02.gguf
+k27,group,0.01,0.0,0.0,0.0,0,0,32,12,187.9965,8.3754,1.1,34.0,/mnt/Matrix/Work/base9-quantization/results/analog/k27_g_sp0.0100_dz0.02.gguf
+k27,group,0.02,0.0,0.0,0.0,0,0,32,12,921.5161,46.5600,2.0,34.4,/mnt/Matrix/Work/base9-quantization/results/analog/k27_g_sp0.0200_dz0.02.gguf

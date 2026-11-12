@@ -1,0 +1,4 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+stuck,group,0.0,0.0,0.0,0.0,0,0,32,10,46.6185,1.8700,0.7,27.6,/mnt/Matrix/Work/base9-quantization/results/analog/stuck_g_c32_s0_sp0.0000.gguf
+stuck,group,0.01,0.0,0.0,0.0,0,0,32,10,48.6440,1.9575,1.5,26.9,/mnt/Matrix/Work/base9-quantization/results/analog/stuck_g_c32_s0_sp0.0100.gguf
+stuck,group,0.02,0.0,0.0,0.0,0,0,32,10,75.8652,3.1599,0.7,26.8,/mnt/Matrix/Work/base9-quantization/results/analog/stuck_g_c32_s0_sp0.0200.gguf

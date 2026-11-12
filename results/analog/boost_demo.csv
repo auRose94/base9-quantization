@@ -1,0 +1,13 @@
+q8_0,tensor,0.0,0.0,0.0,0.0,0,0,32,12,12.2827,0.4067,0.7,22.9,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0000_x10.gguf
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+f16,tensor,0.0,0.0,0.0,0.0,0,0,32,12,78186.4233,869.3068,0.8,23.0,/mnt/Matrix/Work/base9-quantization/results/analog/f16_t_sp0.0000_x10.gguf
+q8_0,tensor,0.001,0.0,0.0,0.0,0,0,32,12,77985.7228,867.5945,1.7,23.0,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0010_x10.gguf
+f16,tensor,0.001,0.0,0.0,0.0,0,0,32,12,78309.8803,869.7243,1.4,23.0,/mnt/Matrix/Work/base9-quantization/results/analog/f16_t_sp0.0010_x10.gguf
+q8_0,tensor,0.005,0.0,0.0,0.0,0,0,32,12,78623.6997,869.3552,1.9,23.5,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0050_x10.gguf
+f16,tensor,0.005,0.0,0.0,0.0,0,0,32,12,78847.6465,871.2131,0.7,24.1,/mnt/Matrix/Work/base9-quantization/results/analog/f16_t_sp0.0050_x10.gguf
+q8_0,tensor,0.01,0.0,0.0,0.0,0,0,32,12,79497.1637,871.7599,1.6,24.4,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0100_x10.gguf
+f16,tensor,0.01,0.0,0.0,0.0,0,0,32,12,79657.1061,873.5887,1.8,23.0,/mnt/Matrix/Work/base9-quantization/results/analog/f16_t_sp0.0100_x10.gguf
+q8_0,tensor,0.0,0.0,0.0,0.0,0,0,32,12,77807.0560,867.0669,0.8,22.5,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0000_x10.gguf
+q8_0,tensor,0.001,0.0,0.0,0.0,0,0,32,12,77985.7228,867.5945,1.6,22.3,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0010_x10.gguf
+q8_0,tensor,0.005,0.0,0.0,0.0,0,0,32,12,78623.6997,869.3552,1.5,22.3,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0050_x10.gguf
+q8_0,tensor,0.01,0.0,0.0,0.0,0,0,32,12,79497.1637,871.7599,0.7,22.2,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_t_sp0.0100_x10.gguf

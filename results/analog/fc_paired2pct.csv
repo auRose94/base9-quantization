@@ -1,0 +1,9 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+f16,group,0.02,0.0,0.0,0.0,0,0,-1,10,30.0689,0.2521,2.4,713.8,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_c-1_s0_sp0.0200.gguf
+k15,group,0.02,0.0,0.0,0.0,0,0,-1,10,40.4352,0.3459,1.1,709.7,/mnt/Matrix/Work/base9-quantization/results/analog/k15_g_c-1_s0_sp0.0200.gguf
+k27,group,0.02,0.0,0.0,0.0,0,0,-1,10,31.4812,0.2658,1.7,716.6,/mnt/Matrix/Work/base9-quantization/results/analog/k27_g_c-1_s0_sp0.0200.gguf
+q4_km,group,0.02,0.0,0.0,0.0,0,0,-1,10,31.7870,0.2666,1.8,718.8,/mnt/Matrix/Work/base9-quantization/results/analog/q4_km_g_c-1_s0_sp0.0200.gguf
+f16,group,0.02,0.0,0.0,0.0,0,1,-1,10,460.6865,4.5974,1.6,708.2,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_c-1_s1_sp0.0200.gguf
+k15,group,0.02,0.0,0.0,0.0,0,1,-1,10,583.9897,5.8320,1.7,526.4,/mnt/Matrix/Work/base9-quantization/results/analog/k15_g_c-1_s1_sp0.0200.gguf
+k27,group,0.02,0.0,0.0,0.0,0,1,-1,10,497.3256,5.0324,0.7,495.4,/mnt/Matrix/Work/base9-quantization/results/analog/k27_g_c-1_s1_sp0.0200.gguf
+q4_km,group,0.02,0.0,0.0,0.0,0,1,-1,10,475.8057,4.7123,0.7,496.3,/mnt/Matrix/Work/base9-quantization/results/analog/q4_km_g_c-1_s1_sp0.0200.gguf

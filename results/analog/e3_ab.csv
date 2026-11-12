@@ -1,0 +1,7 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+control,group,0.0,0.0,0.0,0.0,0,0,32,10,45.7724,2.3049,0.7,35.7,/mnt/Matrix/Work/base9-quantization/results/analog/control_g_sp0.0000.gguf
+control,group,0.01,0.0,0.0,0.0,0,0,32,10,57.6531,2.9249,0.7,32.2,/mnt/Matrix/Work/base9-quantization/results/analog/control_g_sp0.0100.gguf
+control,group,0.02,0.0,0.0,0.0,0,0,32,10,293.9331,16.7594,0.7,32.2,/mnt/Matrix/Work/base9-quantization/results/analog/control_g_sp0.0200.gguf
+noise,group,0.0,0.0,0.0,0.0,0,0,32,10,30.4176,1.3171,0.7,29.2,/mnt/Matrix/Work/base9-quantization/results/analog/noise_g_sp0.0000.gguf
+noise,group,0.01,0.0,0.0,0.0,0,0,32,10,30.8855,1.3194,1.9,27.4,/mnt/Matrix/Work/base9-quantization/results/analog/noise_g_sp0.0100.gguf
+noise,group,0.02,0.0,0.0,0.0,0,0,32,10,37.9457,1.5773,0.8,28.0,/mnt/Matrix/Work/base9-quantization/results/analog/noise_g_sp0.0200.gguf

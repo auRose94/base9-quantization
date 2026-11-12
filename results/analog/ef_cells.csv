@@ -1,0 +1,11 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+k15e,group,0.0,0.0,0.0,0.0,0,0,32,10,20556.7091,1050.3797,1.1,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k15e_g_c32_s0_sp0.0000.gguf
+k15e,group,0.01,0.0,0.0,0.0,0,0,32,10,35044.4120,1738.6160,1.0,26.6,/mnt/Matrix/Work/base9-quantization/results/analog/k15e_g_c32_s0_sp0.0100.gguf
+k15e,group,0.02,0.0,0.0,0.0,0,0,32,10,57325.0636,2866.1266,1.5,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k15e_g_c32_s0_sp0.0200.gguf
+k27e,group,0.0,0.0,0.0,0.0,0,0,32,10,29.3312,1.0418,1.6,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k27e_g_c32_s0_sp0.0000.gguf
+k27e,group,0.01,0.0,0.0,0.0,0,0,32,10,44.3468,1.6358,0.6,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k27e_g_c32_s0_sp0.0100.gguf
+k27e,group,0.02,0.0,0.0,0.0,0,0,32,10,405.4780,18.0241,1.5,26.6,/mnt/Matrix/Work/base9-quantization/results/analog/k27e_g_c32_s0_sp0.0200.gguf
+k15e,group,0.01,0.0,0.0,0.0,0,1,32,10,35212.2595,1759.8900,1.2,26.3,/mnt/Matrix/Work/base9-quantization/results/analog/k15e_g_c32_s1_sp0.0100.gguf
+k15e,group,0.02,0.0,0.0,0.0,0,1,32,10,99855.4979,4734.5792,0.6,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k15e_g_c32_s1_sp0.0200.gguf
+k27e,group,0.01,0.0,0.0,0.0,0,1,32,10,44.5331,1.6465,0.8,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k27e_g_c32_s1_sp0.0100.gguf
+k27e,group,0.02,0.0,0.0,0.0,0,1,32,10,3689.7398,177.0838,0.6,26.5,/mnt/Matrix/Work/base9-quantization/results/analog/k27e_g_c32_s1_sp0.0200.gguf

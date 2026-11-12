@@ -1,0 +1,13 @@
+subject,scale_ref,sigma_prog,sigma_read,ir_alpha,stuck_p,levels,seed,chunks,threads,ppl,ppl_unc,write_s,ppl_s,gguf
+f16,group,0.01,0.0,0.0,0.0,0,0,-1,10,15.0709,0.1195,2.3,708.9,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_c-1_s0_sp0.0100.gguf
+q8_0,group,0.01,0.0,0.0,0.0,0,0,-1,10,15.0808,0.1196,1.3,719.4,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_g_c-1_s0_sp0.0100.gguf
+k63,group,0.01,0.0,0.0,0.0,0,0,-1,10,15.0829,0.1195,1.1,722.5,/mnt/Matrix/Work/base9-quantization/results/analog/k63_g_c-1_s0_sp0.0100.gguf
+k15,group,0.01,0.0,0.0,0.0,0,0,-1,10,17.0092,0.1363,1.8,731.2,/mnt/Matrix/Work/base9-quantization/results/analog/k15_g_c-1_s0_sp0.0100.gguf
+k27,group,0.01,0.0,0.0,0.0,0,0,-1,10,15.4549,0.1229,1.9,729.8,/mnt/Matrix/Work/base9-quantization/results/analog/k27_g_c-1_s0_sp0.0100.gguf
+q4_km,group,0.01,0.0,0.0,0.0,0,0,-1,10,15.4224,0.1219,2.0,692.1,/mnt/Matrix/Work/base9-quantization/results/analog/q4_km_g_c-1_s0_sp0.0100.gguf
+f16,group,0.01,0.0,0.0,0.0,0,1,-1,10,15.3406,0.1227,1.8,503.2,/mnt/Matrix/Work/base9-quantization/results/analog/f16_g_c-1_s1_sp0.0100.gguf
+q8_0,group,0.01,0.0,0.0,0.0,0,1,-1,10,15.3570,0.1229,1.5,498.8,/mnt/Matrix/Work/base9-quantization/results/analog/q8_0_g_c-1_s1_sp0.0100.gguf
+k63,group,0.01,0.0,0.0,0.0,0,1,-1,10,15.3797,0.1230,1.3,498.7,/mnt/Matrix/Work/base9-quantization/results/analog/k63_g_c-1_s1_sp0.0100.gguf
+k15,group,0.01,0.0,0.0,0.0,0,1,-1,10,17.4654,0.1410,1.4,500.1,/mnt/Matrix/Work/base9-quantization/results/analog/k15_g_c-1_s1_sp0.0100.gguf
+k27,group,0.01,0.0,0.0,0.0,0,1,-1,10,15.8187,0.1271,0.7,499.6,/mnt/Matrix/Work/base9-quantization/results/analog/k27_g_c-1_s1_sp0.0100.gguf
+q4_km,group,0.01,0.0,0.0,0.0,0,1,-1,10,15.7083,0.1254,1.3,499.3,/mnt/Matrix/Work/base9-quantization/results/analog/q4_km_g_c-1_s1_sp0.0100.gguf
