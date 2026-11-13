@@ -77,3 +77,7 @@ results/analog/*.gguf
 results/analog/logs/
 results/e3_noiseaware/
 results/synapse_char/
+results/analog/*.log
+
+# verilator build artifacts
+fpga/analog_emu/sim_build/
