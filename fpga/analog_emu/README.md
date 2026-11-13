@@ -56,15 +56,24 @@ PASS = every output word of every token matches the python reference
 bit-for-bit.  This is the char9 discipline one abstraction level down:
 golden vectors, diff, PASS/FAIL.
 
-## Roadmap from here
+## Status
 
-- v1 (this): fixed-point MVM tile + DAC/ADC, gate green in sim.
-- v2: LFSR on-tile read-noise injection (the RTL generates its own noise for
-  the *timing* experiments — python still owns program-time degradation),
-  drift counter (register increments per N cycles → weight refresh event),
-  LIF neuron core (the PNAS paper's spike trigger) on the tile output.
-- v3: Tang Nano 20K bring-up — one 64×64 tile on silicon (the card easily
-  holds 4k synapses), UART-programmed images, measured-against-itself.
-- The `.k9` connection: the weight image format IS the container — digits
-  plus group scales; `experiments/k9.py` records feed it directly.  The
-  container research becomes the array's programming format.
+- **v1 DONE** — fixed-point MVM tile + DAC/ADC, gate bit-exact in sim.
+- **v2 DONE** — on-tile LFSR16 read-noise (xorshift 7,9,8, symmetric-odd
+  ±2^(k−1)−1 ADC-LSBs, drawn fresh per row per token — the deterministic
+  RTL twin of the Phase-B read path), drift step (exponential conductance
+  relaxation `W -= W >> s` swept in-place between token batches), and a
+  per-row LIF core (leak → integrate → threshold → reset-to-zero spike,
+  BrainScaleS-style).  Gate bit-exact at 16×16 and 64×64 with the spike
+  path exercised (519 spikes verified word-for-word).  A `--sweep` mode
+  prints the tile-level survival curve (RMS vs read-noise power — doubles
+  per noise-power step, as the physics demands).
+- **Fixed-rail finding** (v2, physical): rails sized to the max accumulator
+  quantize typical outputs to zero — the heavy tail forces either
+  auto-ranging (Phase-B idealization) or accepting outlier clipping
+  (`--out-shift` override).  Same trade a real ADC board makes.
+- **v3 next**: Tang Nano 20K bring-up — one 64×64 tile on silicon
+  (UART-programmed images), then the `.k9` connection: the weight image
+  format IS the container — digits plus group scales; `experiments/k9.py`
+  records feed it directly.  The container research becomes the array's
+  programming format.
