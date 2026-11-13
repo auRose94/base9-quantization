@@ -84,3 +84,8 @@ fpga/analog_emu/sim_build/
 
 # demos/quant-grid: regenerated from source_r2head.png by make_grid.py
 demos/quant-grid/source_master.png
+
+# synthesis artifacts (regenerable via synth/build.sh)
+fpga/analog_emu/synth/gate*.json
+fpga/analog_emu/synth/*.fs
+fpga/analog_emu/synth/*.log
