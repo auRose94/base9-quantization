@@ -81,3 +81,6 @@ results/analog/*.log
 
 # verilator build artifacts
 fpga/analog_emu/sim_build/
+
+# demos/quant-grid: regenerated from source_r2head.png by make_grid.py
+demos/quant-grid/source_master.png

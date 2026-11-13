@@ -79,6 +79,26 @@ Six connected pieces, each with a measured result:
    is built and waiting on parts. This direction came from the author's
    observation that a quantization scale is an analog gain cell in disguise.
 
+## What the quantization looks like
+
+The container's digit grids, applied to a 2D image instead of weight tensors
+(`demos/quant-grid/`, reproducible with `make_grid.py`): everything is
+quantized in linear light, round-to-nearest, no dithering. The classic
+formats use one per-tensor scale; the ninths panels use the `docs/12` §4.1
+grid — per-64-value group max-magnitude scales, digits `d ∈ [0, k−1]`,
+dequantized as `W = m·(d−H)/H` — with group mean-centering, because pixels,
+unlike weights, are non-negative.
+
+![Classic quantization formats — FP64, FP16, FP8, INT8, FP4, INT4, 1.58-bit, 1-bit — applied to a Robonaut 2 photo](demos/quant-grid/grid_classic.png)
+
+![ninths digit containers k99 through k3, plus the k9 digit map, on the same photo](demos/quant-grid/grid_ninths.png)
+
+Same 1.58 bits per value, two scale policies: the BitNet-style absmean
+ternary collapses while ninths k3 stays readable — and the amplified error
+atlas ([grid_error.png](demos/quant-grid/grid_error.png)) shows what each
+format throws away, down to FP16's sub-8-bit residual and the k-ladder's
+visible 64-group structure.
+
 ## The idea in one minute
 
 Two instincts are two views of one grid:
@@ -127,6 +147,7 @@ better methodology showed them to be noise-draw artifacts.
     fpga/                          Tang Nano 20K validator + SDRAM work
     rs/                            Rust codec workspace (byte-exact vs python)
     probes/                        one-off measurement probes
+    demos/quant-grid/              visual quantization grid (the images above)
     results/                       CSV/MD outputs of every experiment
     chat_k9.py                     local chat UI, K9 vs bf16 A/B
     agent via experiments/agent_k9.py + lean-ctx MCP
