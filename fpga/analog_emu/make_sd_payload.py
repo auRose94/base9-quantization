@@ -90,6 +90,12 @@ def main() -> None:
     with open(HERE / "pay_analog.hex", "w") as fh:
         for w in words:
             fh.write(f"{w:08x}\n")
+    # raw sectors for the host-side dd: the SPI reader assembles words
+    # BIG-ENDIAN from the sector bytes (first byte on the wire = MSB)
+    import struct
+    with open(HERE / "pay_analog.bin", "wb") as fh:
+        for w in words:
+            fh.write(struct.pack(">I", w))
     print(f"pay_analog.hex: {len(words)} words = {len(words)//128} LBAs "
           f"(LBA 2048..{2048 + len(words)//128 - 1})")
 

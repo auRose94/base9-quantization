@@ -89,3 +89,5 @@ demos/quant-grid/source_master.png
 fpga/analog_emu/synth/gate*.json
 fpga/analog_emu/synth/*.fs
 fpga/analog_emu/synth/*.log
+fpga/analog_emu/pay_analog.bin
+fpga/analog_emu/pay_analog.hex
