@@ -1,0 +1,25 @@
+// analog_emu — Tang Nano 20K constraints (pins follow the G0 board.cst)
+IO_LOC  "clk" 4;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+CLOCK_LOC "clk" BUFG;
+
+IO_LOC  "led[0]" 15;
+IO_PORT "led[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "led[1]" 16;
+IO_PORT "led[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "led[2]" 17;
+IO_PORT "led[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "led[3]" 18;
+IO_PORT "led[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "led[4]" 19;
+IO_PORT "led[4]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "led[5]" 20;
+IO_PORT "led[5]" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// BL616 pod USB-C UART: TX = FPGA -> pod (G0-proven), RX = pod -> FPGA
+// (pin 70: first bring-up guess — if the host sees no 'K', try neighbors)
+IO_LOC  "uart_txd" 69;
+IO_PORT "uart_txd" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC  "uart_rxd" 70;
+IO_LOC  "uart_rxd2" 71;
+IO_PORT "uart_rxd" IO_TYPE=LVCMOS33 PULL_MODE=UP;
