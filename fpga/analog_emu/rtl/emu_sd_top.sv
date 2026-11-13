@@ -187,7 +187,11 @@ module emu_sd_top (
           end
         end
         S_FILL: begin
-          if (sd_rd_done) begin                    // one LBA streamed
+          boot_to <= boot_to + 1;
+          if (boot_to >= 32'd405000000) begin      // 60 s read watchdog
+            err_code <= 4'd2; state <= S_DONE;
+          end else if (sd_rd_done) begin           // one LBA streamed
+            boot_to <= 0;
             fill_blk <= fill_blk + 6'd1;
             if (fill_blk == 6'd20) begin           // 21 LBAs done
               tok <= 0; qcnt <= 0;
@@ -291,17 +295,55 @@ module emu_sd_top (
   end
 
   // ------------------------------------------------- LEDs ----------------
+  // polarity/order-proof verdict protocol:
+  //   running          led[5] heartbeat, others dark
+  //   PASS (err 0)     ALL six LEDs pulse together once per second
+  //   FAIL (err 1..5)  ALL six LEDs blink out the code: N quick pulses,
+  //                    1.5 s dark, repeat — count the pulses per burst
   reg [25:0] hb = 0;
   always @(posedge clk13) hb <= hb + 1;
 
   wire running = (state != S_DONE);
 
-  assign led[0] = !running ? ((err_code == 0) ? 1'b1 : err_code[0]) : 1'b0;
-  assign led[1] = !running ? ((err_code == 0) ? 1'b1 : err_code[1]) : 1'b0;
-  assign led[2] = !running ? ((err_code == 0) ? 1'b1 : err_code[2]) : 1'b0;
-  assign led[3] = !running ? ((err_code == 0) ? 1'b1 : err_code[3]) : 1'b0;
-  assign led[4] = !running ? 1'b1 : 1'b0;
-  assign led[5] = running  ? hb[21]
-                : (err_code == 0) ? hb[22] : hb[16];
+  // blink-out sequencer: 6.75 MHz -> 6750 cycles = 1 ms
+  reg [15:0] ms      = 0;      // ms within the current phase
+  reg [3:0]  pulses_left = 0;  // pulses remaining in this burst
+  reg        burst_on = 0;    // in the pulse burst (vs the 1.5 s gap)
+  reg        led_blink = 0;
+
+  wire ms_tick = (ms == 16'd6749);
+  always @(posedge clk13) begin
+    if (!running) begin
+      if (ms_tick) ms <= 0; else ms <= ms + 1;
+      if (err_code == 0) begin
+        led_blink <= (ms < 16'd675);          // PASS: 100 ms pulse / 1 s
+      end else if (!burst_on) begin
+        // dark gap: 1.5 s, then arm the burst
+        led_blink <= 0;
+        if (ms >= 16'd2500) begin
+          burst_on <= 1; pulses_left <= err_code; ms <= 0;
+        end
+      end else begin
+        // burst: N pulses of 150 ms on / 150 ms off
+        led_blink <= (ms < 16'd500);
+        if (ms >= 16'd1000) begin
+          ms <= 0;
+          pulses_left <= pulses_left - 1;
+          if (pulses_left == 1) begin
+            burst_on <= 0; ms <= 0;   // burst done -> gap
+          end
+        end
+      end
+    end else begin
+      ms <= 0; burst_on <= 0; pulses_left <= 0; led_blink <= 0;
+    end
+  end
+
+  assign led[0] = running ? hb[21] : led_blink;
+  assign led[1] = running ? 1'b0    : led_blink;
+  assign led[2] = running ? 1'b0    : led_blink;
+  assign led[3] = running ? 1'b0    : led_blink;
+  assign led[4] = running ? 1'b0    : led_blink;
+  assign led[5] = running ? 1'b0    : led_blink;
 
 endmodule

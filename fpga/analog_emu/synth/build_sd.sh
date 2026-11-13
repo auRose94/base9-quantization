@@ -8,3 +8,4 @@ nextpnr-himbaechel --json sd.json --device GW2AR-LV18QN88C8/I7 \
   --vopt family=GW2A-18C --vopt cst=analog-sd.cst --freq 27 --write sd_pnr.json
 gowin_pack -c -d GW2A-18C -o emu_sd_top.fs sd_pnr.json
 echo "emu_sd_top.fs written"
+ls -la --time-style=full-iso emu_sd_top.fs
