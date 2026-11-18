@@ -68,7 +68,7 @@ token (K9 rungs, per-tensor k), (b) overlapping the wheel with compute
 | Rung | Gate |
 |---|---|
 | M0 device probe | ✅ green (output above) |
-| M1 GGUF reader + GPU dequant | Rust mmap GGUF (type table incl. K9) → tensor to GPU (registered) → dequant kernel → **byte-exact vs ninths-codec** — reader ✅ green on stock q8_0 AND K9-typed flint (containers already carry `ninths.materialize` + `ninths.directory2`, the materialization plan hook) |
+| M1 GGUF reader + GPU dequant | Rust mmap GGUF (type table incl. K9) → tensor to GPU (registered) → dequant kernel → **byte-exact vs ninths-codec** — ✅ **DONE 2026-11-18**: `kennel dequant` GATE PASS on flint k63 body (268M w), k5 body, k99 embed (307M w), all 0 ulp; kernel 188-191 GB/s effective (~94% of realistic ceiling); see §6 |
 | M2 GEMV/GEMM on dequantized K9 | greedy forward on the 1.5B, tokens to stdout |
 | M3 full forward + tokenizer | `kennel run` end-to-end, batch 1 |
 | M4 serve | OpenAI-compat HTTP, ratchet-compatible |
@@ -143,3 +143,71 @@ Current A9 state vs the gufo/Strata recipe: GTT 59 GiB (stock), carve-out
 8. **Claim wins against the strongest generic baseline**, split prefill/decode/temperature (ktransformers lesson).
 
 **The open bet, confirmed open**: tinygrad/MLX/torch.compile prove per-model graph compilation works; DeepGEMM/FlashInfer/HPC-Ops prove per-model/per-shape kernels pay 1.5–2.5×; **no one has unified them in the artifact** — container materializes the layout AND the kernel plan per (model, GPU). K9 can; that is kennel's reason to exist beyond the wheel.
+
+## 6. M1 rung report (2026-11-18)
+
+`kennel dequant <gguf> <tensor>`: directory2 → lane-parallel rANS decode
+(one thread per v2 lane, docs/11 layout) → ent8/f32/f16 scales → CPU
+normative dequant (ninths-codec `dequant_level`) → GPU dequant kernel
+(`kernels/dequant.hip`, hipcc `--genco --offload-arch=gfx1151` in
+build.rs, embedded code object, `hipModuleLoadData`) → bit-exact compare.
+
+**Gates passed** (semi-clean driver state, before §6.1 degradation):
+
+| tensor | n weights | result |
+|---|---|---|
+| flint k63 `blk.2.ffn_down_exps` | 268,435,456 | GATE PASS, 0 ulp (×2) |
+| flint k5 `blk.3.ffn_gate_exps` | 268,435,456 | GATE PASS, 0 ulp |
+| flint k5/k99 `token_embd` | 307,494,912 | GATE PASS, 0 ulp (×2) |
+
+Measured: digits decode 849-861 MB/s lane-parallel (debug build; the
+python reference is 130-165 MB/s single-lane), CPU dequant ~1.3 GW/s,
+**kernel 188-191 GB/s effective of ~200 realistic** — the wheel works.
+Pageable-copy caveats below dominate everything else.
+
+The gate's first catch was our own bug: the CPU dequant chunked by rows
+but indexed scales with the chunk-LOCAL row — every chunk after the first
+re-read row-0 scales. Chunk 0 (local==global) passed, the rest failed;
+the GPU was right. This is exactly why gates exist.
+
+k5/k3 containers also exposed a stale spec line: docs/12 says k ≥ 9 but
+the published extreme rungs use k=5/k=3 — kennel accepts odd k ∈ 3..=255;
+docs/12 should be corrected (its own preamble: code wins).
+
+### 6.1 ROCm 10.1 / gfx1151 pageable-copy bug (found the hard way)
+
+Raw pageable `hipMemcpy` HtoD **intermittently SIGSEGVs inside
+libamdhip64** (7-frame internal stack, always `hipMemcpy`), roughly
+VA-layout dependent (flaky per run: ~50% on big transfers this session).
+Evidence from the hip.rs test ladder (`va_*` tests, run-order isolated):
+
+- single 268 MB pageable copy: flaky (~50%)
+- 8 MiB chunked pageable copies: still flaky — chunking does NOT dodge it
+- three live DevBufs with a >1 GiB one allocated LAST: deterministic crash (big-first passes)
+- a multi-GiB file mmap alive during the copies: crashes regardless of alloc order
+- pinned `hipHostMalloc` staging (the ggml pattern): best observed rates; all full-gate passes after it landed, but not 100%
+- **degradation**: every mid-copy segfault leaks GTT/driver state; over
+  ~40 crashed runs the box went from "unit tests pass" to **100% crash
+  on every pageable path including 1 MiB uploads** — recovery requires
+  reboot. Consistent with the known class "unclean exits leave GPU memory
+  driver-held".
+
+kennel's standing rules (in code + this doc):
+
+1. Device buffers allocate **largest-first**.
+2. **No pageable hipMemcpy** — all host↔device traffic through pinned
+   staging (`hip::Staging`, 16 MiB); engine-level successor: registered
+   weight regions (M3-HIP pattern).
+3. **No giant mmaps alive during GPU phases** — blobs are extracted to
+   owned buffers and the container mmap dropped first (`KENNEL_DEBUG_MAPS=1`
+   verifies 0 VMAs > 1 GiB at GPU time).
+4. Never let a GPU process die mid-copy: panics unwind (Drops free), but
+   SIGSEGV leaks — clean error paths are load-bearing for driver health.
+
+**Next-session validation (clean boot, measure FIRST):** run
+`hip::tests::va_*` + the three gates ×10 each; record per-path rates for
+chunked-vs-single pageable and pinned staging. If clean-boot pinned
+staging is 0/30 crashes, M1 stands as-is; if it still flakes, escalate to
+`hipMemcpyAsync` + explicit stream, then `hipHostRegister`ed sources, and
+file the upstream issue (ROCm 10.1, gfx1151, APU GTT, repro suite in
+`rs/crates/kennel/src/hip.rs::tests`).

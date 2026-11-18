@@ -17,9 +17,12 @@
 
 mod gguf;
 mod hip;
+mod k9;
 
 use clap::Parser as _;
 use std::path::PathBuf;
+
+const KERNEL_CO: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kennel_kernels.co"));
 
 #[derive(clap::Parser, Debug)]
 #[command(name = "kennel", version, about = "experimental ninths engine for Strix Halo (gfx1151)")]
@@ -33,6 +36,13 @@ enum Cli {
         /// show this many tensor rows (default 12)
         #[arg(short = 'n', long, default_value_t = 12)]
         tensors: usize,
+    },
+    /// Decode + dequant one K9 tensor, GPU vs CPU, byte-exact gate
+    Dequant {
+        /// path to a K9/ninths container (.gguf with a k9 directory)
+        file: PathBuf,
+        /// substring of the directory record name (must match exactly one)
+        tensor: String,
     },
 }
 
@@ -113,6 +123,186 @@ fn main() -> anyhow::Result<()> {
             for t in g.tensors.iter().take(tensors) {
                 let dims: Vec<String> = t.dims.iter().map(|d| d.to_string()).collect();
                 println!("  {:52} {:>10}  [{}]", t.name, gguf::type_name(t.ty), dims.join("×"));
+            }
+            Ok(())
+        }
+        Cli::Dequant { file, tensor } => {
+            let t0 = std::time::Instant::now();
+            // Scope the container: its multi-GiB mmap must be DEAD before
+            // any GPU call — ROCm 10.1/gfx1151 segfaults inside pageable
+            // HtoD when a giant file VMA is alive (hip::tests::va_d2_*),
+            // even with largest-first device allocations. Engine-level
+            // fix later: pread or pinned staging (ggml's approach).
+            let (dir, rec, blob) = {
+                let g = gguf::Gguf::open(&file)?;
+                let (dir_bytes, v2) = g
+                    .k9_directory()?
+                    .ok_or_else(|| anyhow::anyhow!("no ninths/k9 directory in {}", file.display()))?;
+                let dir = k9::parse_directory(&dir_bytes, v2)?;
+                let matches: Vec<&k9::Record> =
+                    dir.iter().filter(|r| r.name.contains(&tensor)).collect();
+                let rec = match matches.as_slice() {
+                    [one] => (*one).clone(),
+                    [] => anyhow::bail!(
+                        "no record matches {:?}; e.g. {}",
+                        tensor,
+                        dir[0].name
+                    ),
+                    many => anyhow::bail!(
+                        "{} records match {:?}: {}",
+                        many.len(),
+                        tensor,
+                        many.iter().map(|r| r.name.as_str()).take(4).collect::<Vec<_>>().join(", ")
+                    ),
+                };
+                if rec.perm_flag != 0 {
+                    anyhow::bail!("record {} is permuted — F16 materialization path is a later rung", rec.name);
+                }
+                let tinfo = g
+                    .tensors
+                    .iter()
+                    .find(|t| t.name == rec.name)
+                    .ok_or_else(|| anyhow::anyhow!("record {} has no GGUF tensor entry", rec.name))?;
+                let blob = g.tensor_bytes(tinfo)?.to_vec();
+                (dir, rec, blob)
+            }; // <- Gguf (and its mmap) drops here
+            if std::env::var("KENNEL_DEBUG_MAPS").is_ok() {
+                let maps = std::fs::read_to_string("/proc/self/maps")?;
+                let big: Vec<&str> = maps
+                    .lines()
+                    .filter(|l| {
+                        let Some((range, _)) = l.split_once(' ') else { return false };
+                        let (a, b) = range.split_once('-').unwrap();
+                        let lo = u64::from_str_radix(a, 16).unwrap();
+                        let hi = u64::from_str_radix(b, 16).unwrap();
+                        hi - lo > (1 << 30)
+                    })
+                    .collect();
+                eprintln!("VMAs > 1 GiB at GPU phase: {}", big.len());
+                for l in big.iter().take(4) {
+                    eprintln!("  {l}");
+                }
+            }
+            println!(
+                "container: {} — k9 directory ({} records), mmap released [{} ms]",
+                file.display(),
+                dir.len(),
+                t0.elapsed().as_millis()
+            );
+            println!(
+                "record: {} — {}x{} k={} lanes={} scale_mode={} blob {} B",
+                rec.name, rec.rows, rec.cols, rec.k, rec.lanes, rec.scale_mode, blob.len()
+            );
+
+            // ---- CPU: digits, scales, normative dequant ----
+            let t = std::time::Instant::now();
+            let digits = k9::decode_digits(&rec, &blob)?;
+            let n = digits.len();
+            println!(
+                "  digits decode: {n} in {} ms ({:.0} MB/s)",
+                t.elapsed().as_millis(),
+                n as f64 / 1e6 / t.elapsed().as_secs_f64().max(1e-9)
+            );
+
+            let t = std::time::Instant::now();
+            let scales = k9::decode_scales(&rec, &blob)?;
+            println!(
+                "  scales decode: {} f32 in {} ms",
+                scales.len(),
+                t.elapsed().as_millis()
+            );
+
+            let t = std::time::Instant::now();
+            let cpu = k9::dequant_f32(&rec, &digits, &scales)?;
+            println!(
+                "  cpu dequant:   {n} w in {} ms ({:.0} MW/s)",
+                t.elapsed().as_millis(),
+                n as f64 / 1e6 / t.elapsed().as_secs_f64().max(1e-9)
+            );
+
+            // ---- GPU: upload, kernel, download ----
+            // Two ROCm 10.1/gfx1151 rules live here (hip::tests::* document
+            // both): allocate device buffers LARGEST-FIRST, and never copy
+            // pageable memory directly — everything goes through pinned
+            // staging (the ggml pattern).
+            hip::set_device(0)?;
+            let d_out = hip::DevBuf::alloc(n * 4)?;
+            let d_digits = hip::DevBuf::alloc(n)?;
+            let d_scales = hip::DevBuf::alloc(scales.len() * 4)?;
+            let staging = hip::Staging::new(16 << 20)?;
+
+            let t = std::time::Instant::now();
+            staging.upload(&digits, &d_digits)?;
+            let scale_bytes =
+                unsafe { std::slice::from_raw_parts(scales.as_ptr() as *const u8, scales.len() * 4) };
+            staging.upload(scale_bytes, &d_scales)?;
+            println!(
+                "  upload: {} + {} B in {} ms (pinned staged)",
+                n,
+                scale_bytes.len(),
+                t.elapsed().as_millis()
+            );
+
+            let module = hip::Module::load(KERNEL_CO)?;
+            let func = module.function("k9_dequant_f32")?;
+            let mut p_digits = d_digits.as_ptr();
+            let mut p_scales = d_scales.as_ptr();
+            let mut p_out = d_out.as_ptr();
+            let mut n64 = n as u64;
+            let mut cols = rec.cols as u32;
+            let mut n_groups = (rec.cols / rec.group as usize) as u32;
+            let mut h_int = ((rec.k - 1) / 2) as i32;
+            let mut h_flt = h_int as f32;
+            let mut args: [*mut std::ffi::c_void; 8] = [
+                (&mut p_digits as *mut *mut std::ffi::c_void).cast(),
+                (&mut p_scales as *mut *mut std::ffi::c_void).cast(),
+                (&mut p_out as *mut *mut std::ffi::c_void).cast(),
+                (&mut n64 as *mut u64).cast(),
+                (&mut cols as *mut u32).cast(),
+                (&mut n_groups as *mut u32).cast(),
+                (&mut h_int as *mut i32).cast(),
+                (&mut h_flt as *mut f32).cast(),
+            ];
+
+            let block: u32 = 256;
+            let grid_x = (n64 + block as u64 - 1) as u32 / block;
+            let t = std::time::Instant::now();
+            hip::launch(func, (grid_x, 1, 1), (block, 1, 1), 0, &mut args)?;
+            hip::sync()?;
+            let kernel_ms = t.elapsed().as_secs_f64() * 1e3;
+            let bytes_touched = n + scale_bytes.len() + n * 4;
+            println!(
+                "  kernel: {n} w in {kernel_ms:.2} ms ({:.0} GB/s effective of ~200)",
+                bytes_touched as f64 / 1e9 / t.elapsed().as_secs_f64().max(1e-9)
+            );
+
+            let mut gpu_bytes = vec![0u8; n * 4];
+            let t = std::time::Instant::now();
+            staging.download(&d_out, &mut gpu_bytes)?;
+            println!("  download: {} B in {} ms (pinned staged)", gpu_bytes.len(), t.elapsed().as_millis());
+
+            // ---- gate: bit-exact vs CPU ----
+            let gpu: &[f32] = unsafe {
+                std::slice::from_raw_parts(gpu_bytes.as_ptr() as *const f32, n)
+            };
+            let mut mismatches = 0usize;
+            let mut first: Option<(usize, f32, f32)> = None;
+            for (i, (a, b)) in cpu.iter().zip(gpu).enumerate() {
+                if a.to_bits() != b.to_bits() {
+                    mismatches += 1;
+                    if first.is_none() {
+                        first = Some((i, *a, *b));
+                    }
+                }
+            }
+            if mismatches == 0 {
+                println!("GATE PASS: {n} weights bit-exact (0 ulp)");
+            } else {
+                if let Some((i, a, b)) = first {
+                    println!("  first mismatch @ {i}: cpu {a:e} vs gpu {b:e}");
+                }
+                println!("GATE FAIL: {mismatches} / {n} mismatched");
+                std::process::exit(1);
             }
             Ok(())
         }
