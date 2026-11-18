@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/ninths-codec",
     "crates/ninths-cli",
+    "crates/kennel",
 ]
 
 [workspace.package]
