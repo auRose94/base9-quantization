@@ -150,12 +150,22 @@ apply_kernel_params() {
       fi
       ;;
     limine)
-      local f; f=/boot/limine.conf
-      if [ ! -e "$f" ]; then f=$(compgen -G '/boot/limine*.conf' | head -1) || true; fi
-      if [ -z "$f" ]; then note "limine detected but no conf found — skipped"; return; fi
-      backup_file "$f"
-      patch_cmdline_line "$f" '^[[:space:]]*cmdline'
-      note "NOTE: CachyOS limine updates may regenerate $f — re-run --check after kernel updates"
+      if [ -e /etc/default/limine ]; then
+        backup_file /etc/default/limine
+        if grep -q 'amdgpu\.gttsize' /etc/default/limine; then
+          note "/etc/default/limine: already set"
+        else
+          printf '\nKERNEL_CMDLINE[default]+=" %s"\n' "$KERNEL_PARAMS" >> /etc/default/limine
+          if command -v limine-mkinitcpio >/dev/null; then
+            limine-mkinitcpio
+          elif command -v limine-update >/dev/null; then
+            limine-update
+          fi
+          note "/etc/default/limine: params appended + Limine config regenerated"
+        fi
+      else
+        note "/etc/default/limine not found — append manually to your Limine config: $KERNEL_PARAMS"
+      fi
       ;;
     unknown)
       note "no supported bootloader detected — kernel params NOT applied."
