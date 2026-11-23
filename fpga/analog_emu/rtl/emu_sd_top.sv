@@ -83,14 +83,16 @@ module emu_sd_top (
   reg [31:0] sd_lba;
   wire       sd_busy_r, sd_done_r, sd_error_r, sd_word_v_r, sd_rd_done_r;
   wire [31:0] sd_word_r;
+  wire [5:0]  dbg_st;
   reg        sd_word_v, sd_rd_done, sd_done, sd_error, sd_busy;
   reg        sd_done_seen;
 
   sd_spi_reader sdr (
     .clk(clk13), .rst_n(rst_n),
     .spi_cs_n(sd_cs_n), .miso(sd_miso), .sck(sd_sck), .mosi(sd_mosi),
-    .start(sd_start), .read_req(sd_pend), .write_req(1'b0), .lba(sd_lba),
-    .wdata_req(), .wdata(32'd0),
+    .start(sd_start), .read_req(sd_pend), .write_req(sd_wpend), .lba(sd_lba),
+    .wdata_req(sd_wdata_req), .wdata(sd_wdata),
+    .dbg_st(dbg_st),
     .busy(sd_busy_r), .done(sd_done_r), .error(sd_error_r),
     .word_valid(sd_word_v_r), .word_out(sd_word_r), .rd_done(sd_rd_done_r),
     .dbg_st());
@@ -106,6 +108,16 @@ module emu_sd_top (
 
   reg [31:0] sd_word;   // registered reader word (1 cycle late)
   always @(posedge clk13) sd_word <= sd_word_r;
+
+  // verdict-report write stream (1 LBA at LBA 4600, after the gate)
+  reg        sd_wpend;
+  wire       sd_wdata_req;
+  reg  [31:0] sd_wdata;
+  reg  [6:0] rcnt;        // report word 0..127
+  reg        report_done;
+  reg  [3:0] rep_task;    // 1 fill, 2+tok per-token, 3 final
+  reg  [3:0] rep_ret;     // state to resume after the write
+  reg [15:0] rep_watch;   // write watchdog
 
   // ------------------------------------------------- fill dispatch -------
   // payload word wcnt (0..2687) — dispatch by segment:
@@ -158,11 +170,25 @@ module emu_sd_top (
   reg [5:0]  fill_blk;
 
   always @(posedge clk13) begin
+    if (sd_wdata_req && state == S_REPORT) begin
+      case (rcnt)
+        7'd0: sd_wdata <= {8'hA9, 8'hA9, rep_task, err_code};  // header
+        7'd1: sd_wdata <= {3'b000, wcnt[12:0]};                // fill progress
+        7'd2: sd_wdata <= {tok[5:0], qcnt[5:0], 20'd0};        // run position
+        7'd3: sd_wdata <= t_spikes[31:0];
+        7'd4: sd_wdata <= t_spikes[63:32];
+        default: sd_wdata <= 32'd0;                            // pad
+      endcase
+      rcnt <= rcnt + 1;
+    end
+  end
+
+  always @(posedge clk13) begin
     if (!rst_n) begin
       state <= S_BOOT; sd_start <= 1'b0; sd_pend <= 1'b0;
       sd_lba <= 32'(SD_BASE_LBA); boot_to <= 0; sd_done_seen <= 1'b0;
       err_code <= 0; fail_idx <= 0; tok <= 0; qcnt <= 0; drift_wait <= 0;
-      fill_blk <= 0;
+      fill_blk <= 0; sd_wpend <= 1'b0; rcnt <= 0; report_done <= 1'b0;
       t_start <= 1'b0; t_drift <= 1'b0; t_tok_we <= 1'b0; t_tok_addr <= 0;
       t_tok_data <= 0; t_yq_addr <= 0; t_vaddr <= 0;
     end else begin
@@ -194,8 +220,10 @@ module emu_sd_top (
             boot_to <= 0;
             fill_blk <= fill_blk + 6'd1;
             if (fill_blk == 6'd20) begin           // 21 LBAs done
-              tok <= 0; qcnt <= 0;
-              state <= S_TLOADA;
+              rep_task <= 4'd1; rep_ret <= S_TLOADA;
+              rep_watch <= 0; rcnt <= 0;
+              sd_lba <= 32'd4600; sd_wpend <= 1'b1;
+              state <= S_REPORT;
             end else begin
               sd_pend <= 1'b1;
             end
@@ -259,9 +287,11 @@ module emu_sd_top (
             qcnt <= 0; t_vaddr <= 0;
             state <= S_VMEM;
           end else begin
+            rep_task <= 4'd2 + tok[3:0]; rep_ret <= S_TLOADA;
+            rep_watch <= 0; rcnt <= 0;
+            sd_lba <= 32'd4600; sd_wpend <= 1'b1;
+            state <= S_REPORT;                     // flight recorder
             tok <= tok + 1;
-            qcnt <= 0;
-            state <= S_TLOADA;
           end
         end
         // drift sweep wait: 3 cycles/cell x 4096 + margin
@@ -286,8 +316,25 @@ module emu_sd_top (
             end
           end
           qcnt <= qcnt + 1;
-          if (qcnt[5:0] == 6'd63) state <= S_DONE;
+          if (qcnt[5:0] == 6'd63) begin
+            rep_task <= 4'd3; rep_ret <= S_DONE;
+            rep_watch <= 0; rcnt <= 0;
+            sd_lba <= 32'd4600; sd_wpend <= 1'b1;
+            state <= S_REPORT;                     // final report
+          end
           else state <= S_VMEM;
+        end
+        // FLIGHT RECORDER: 1 LBA report per checkpoint; the last write
+        // wins, so the card always holds the furthest completed step
+        S_REPORT: begin
+          rep_watch <= rep_watch + 1;
+          if (sd_error || rep_watch >= 16'd81000) begin
+            // write failed or stalled — mark and continue the run anyway
+            if (err_code == 0 && sd_error) err_code <= 4'd2;
+            state <= rep_ret;
+          end else if (sd_rd_done) begin
+            state <= rep_ret;
+          end
         end
         S_DONE: ;   // verdict latched
       endcase
@@ -306,44 +353,62 @@ module emu_sd_top (
   wire running = (state != S_DONE);
 
   // blink-out sequencer: 6.75 MHz -> 6750 cycles = 1 ms
-  reg [15:0] ms      = 0;      // ms within the current phase
+  reg [12:0] ms_cyc   = 0;     // cycles within this millisecond (0..6749)
+  reg [9:0]  ms_cnt   = 0;     // milliseconds within the current phase
   reg [3:0]  pulses_left = 0;  // pulses remaining in this burst
-  reg        burst_on = 0;    // in the pulse burst (vs the 1.5 s gap)
+  reg        burst_on = 0;    // in the pulse burst (vs the 2 s gap)
   reg        led_blink = 0;
 
-  wire ms_tick = (ms == 16'd6749);
+  wire ms_tick = (ms_cyc == 13'd6749);
   always @(posedge clk13) begin
     if (!running) begin
-      if (ms_tick) ms <= 0; else ms <= ms + 1;
-      if (err_code == 0) begin
-        led_blink <= (ms < 16'd675);          // PASS: 100 ms pulse / 1 s
-      end else if (!burst_on) begin
-        // dark gap: 1.5 s, then arm the burst
-        led_blink <= 0;
-        if (ms >= 16'd2500) begin
-          burst_on <= 1; pulses_left <= err_code; ms <= 0;
-        end
-      end else begin
-        // burst: N pulses of 150 ms on / 150 ms off
-        led_blink <= (ms < 16'd500);
-        if (ms >= 16'd1000) begin
-          ms <= 0;
-          pulses_left <= pulses_left - 1;
-          if (pulses_left == 1) begin
-            burst_on <= 0; ms <= 0;   // burst done -> gap
+      if (ms_tick) begin
+        ms_cyc <= 0;
+        if (err_code == 0) begin
+          // PASS: 500 ms lit / 500 ms dark — phase-split by ms_cnt, VISIBLE
+          ms_cnt <= (ms_cnt >= 10'd999) ? 10'd0 : ms_cnt + 1;
+          led_blink <= (ms_cnt < 10'd500);
+        end else if (!burst_on) begin
+          led_blink <= 0;                       // 2 s gap, then arm the burst
+          if (ms_cnt >= 10'd2000) begin
+            burst_on <= 1; pulses_left <= err_code; ms_cnt <= 0;
+          end else begin
+            ms_cnt <= ms_cnt + 1;
+          end
+        end else begin
+          // FAIL burst: err_code pulses of 500 ms lit / 500 ms dark
+          led_blink <= (ms_cnt < 10'd500);
+          if (ms_cnt >= 10'd999) begin
+            ms_cnt <= 0;
+            pulses_left <= pulses_left - 1;
+            if (pulses_left == 1) begin
+              burst_on <= 0; ms_cnt <= 0;       // burst done -> gap
+            end
+          end else begin
+            ms_cnt <= ms_cnt + 1;
           end
         end
       end
     end else begin
-      ms <= 0; burst_on <= 0; pulses_left <= 0; led_blink <= 0;
+      ms_cyc <= 0; ms_cnt <= 0; burst_on <= 0; pulses_left <= 0; led_blink <= 0;
     end
   end
 
-  assign led[0] = running ? hb[21] : led_blink;
-  assign led[1] = running ? 1'b0    : led_blink;
-  assign led[2] = running ? 1'b0    : led_blink;
-  assign led[3] = running ? 1'b0    : led_blink;
-  assign led[4] = running ? 1'b0    : led_blink;
-  assign led[5] = running ? 1'b0    : led_blink;
+  // RUNNING: the LEDs carry the SD engine's live state (6-bit dbg_st —
+  // a frozen pattern after a stall = the wedge address, readable both
+  // polarities); DONE: the verdict blink-out takes over
+  // clock discriminator: led[5] blinks from the 27 MHz domain, led[4] from
+  // the 6.75 MHz fabric (clk13) — if 5 blinks and 4 doesn't, clk13 is dead
+  reg [25:0] hb27 = 0;
+  always @(posedge clk) hb27 <= hb27 + 1;
+  reg [25:0] hb13 = 0;
+  always @(posedge clk13) hb13 <= hb13 + 1;
+
+  assign led[0] = running ? dbg_st[0] : led_blink;
+  assign led[1] = running ? dbg_st[1] : led_blink;
+  assign led[2] = running ? dbg_st[2] : led_blink;
+  assign led[3] = running ? dbg_st[3] : led_blink;
+  assign led[4] = running ? hb13[23] : led_blink;   // clk13 alive indicator
+  assign led[5] = running ? hb27[24] : led_blink;   // 27 MHz alive indicator
 
 endmodule
