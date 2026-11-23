@@ -1,0 +1,11 @@
+arm,seed_tokens,step_id,step_pass,step_status,prompt_tokens,reply_tokens,cum_prompt_tokens,file_tokens,edits,edit_ops,tail_dist,apply_error,seconds,tok_per_s
+append-only,3072,player.gd,False,parse_ok_apis_fail,3287,126,6523,-1,0,,-1,False,1.57,80.1
+append-only,3072,coin.gd,True,ok,3447,55,9970,-1,0,,-1,False,0.85,64.9
+append-only,3072,hurt.gd,True,ok,3538,117,13508,-1,0,,-1,False,1.5,77.8
+append-only,3072,player_take_hit,False,parse_ok_apis_fail,3699,199,17207,-1,0,,-1,False,2.41,82.7
+append-only,3072,recall,False,recall_fail,3939,348,21146,-1,0,,-1,False,4.0,86.9
+clm-auto,3072,player.gd,False,parse_ok_apis_fail,3748,207,7434,3263,1,auto_file_ok,0,False,2.48,83.4
+clm-auto,3072,coin.gd,False,parse_ok_apis_fail,3814,115,11248,3287,1,auto_file_ok,0,False,1.51,76.0
+clm-auto,3072,hurt.gd,False,parse_error,3840,158,15088,3287,0,,-1,True,1.96,80.6
+clm-auto,3072,player_take_hit,False,parse_error,3848,158,18936,3287,0,,-1,True,1.98,80.0
+clm-auto,3072,recall,False,recall_fail,3845,89,22781,3369,1,auto_file_ok,0,False,1.24,71.9

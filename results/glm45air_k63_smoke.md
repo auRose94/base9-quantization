@@ -281,3 +281,17 @@ pp 134.1 t/s, tg 13.08 t/s plain; `--spec-type draft-mtp`: **27.0 t/s**
 export_var, resource_class, pause_game — style/trap-tasks). The gated-
 delta-net scan is compute-bound: MTP pays off double here vs the
 attention-heavy GLM config.
+
+## Agent rung (2026-10-26): the loop is wired
+`experiments/agent_k9.py` — OpenAI-API agent over the local ninths
+llama-server with lean-ctx MCP tools (ctx_edit/ctx_patch/ctx_read/ctx_shell;
+write-through-shell is refused by lean-ctx, which steered the model to its
+native edit tools — the session-31 tool-steer rule, reproduced live).
+Multi-file run: both GDScript files written via ctx_edit, re-read for
+self-check, Godot-4-clean (JSON.stringify/FileAccess/typed funcs);
+45 s wall, 1108 generated tokens, 24.7 tok/s WITH tool round-trips.
+Context economy note: verbose tool rounds overflowed the 16 KiB window at
+turn 4 → rolling eviction of old tool payloads added (CLM theme, in
+practice). Server: glm_k9_serve.sh now defaults to iq4_nl + MTP with
+per-model draft depth (GLM 3 → 29.6 t/s; Qwen3.8-27B 4 → 30.0 t/s — swept
+on the idle box, 2.0-2.3x vs non-speculative).

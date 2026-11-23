@@ -1,0 +1,11 @@
+arm,seed_tokens,step_id,step_pass,step_status,prompt_tokens,reply_tokens,cum_prompt_tokens,file_tokens,edits,edit_ops,tail_dist,apply_error,seconds,tok_per_s
+append-only,3072,player.gd,False,parse_error,100,278,3336,-1,0,,-1,False,2.79,99.7
+append-only,3072,coin.gd,False,parse_error,368,142,3704,-1,0,,-1,False,1.44,98.8
+append-only,3072,hurt.gd,False,parse_error,515,172,4219,-1,0,,-1,False,1.75,98.2
+append-only,3072,player_take_hit,False,parse_error,698,235,4917,-1,0,,-1,False,2.41,97.5
+append-only,3072,recall,False,recall_fail,933,285,5850,-1,0,,-1,False,2.97,96.1
+clm,3072,player.gd,False,parse_error,3748,289,7434,3184,0,,-1,True,3.35,86.3
+clm,3072,coin.gd,False,parse_error,3735,208,11169,3184,0,,-1,True,2.5,83.3
+clm,3072,hurt.gd,False,parse_error,3737,287,14906,3184,0,,-1,True,3.32,86.5
+clm,3072,player_take_hit,False,ok,3745,223,18651,3184,0,,-1,True,2.65,84.2
+clm,3072,recall,False,only_1_blocks,3742,278,22393,3184,0,,-1,True,3.26,85.3
