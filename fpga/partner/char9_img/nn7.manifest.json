@@ -1,0 +1,362 @@
+{
+  "conf": {
+    "vocab": 65,
+    "d": 256,
+    "n_layers": 4,
+    "n_heads": 8,
+    "n_kv_heads": 8,
+    "mlp": 1024,
+    "seq": 128,
+    "rope_theta": 10000,
+    "tie": true,
+    "norm_eps": 1e-05,
+    "corpus": "input.txt",
+    "seed": 7,
+    "val_guard": true
+  },
+  "tensors": [
+    {
+      "name": "blocks.0.attn.k.weight",
+      "offset": 0,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.attn.o.weight",
+      "offset": 67584,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.attn.q.weight",
+      "offset": 135168,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.attn.v.weight",
+      "offset": 202752,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.mlp.down.weight",
+      "offset": 270336,
+      "bytes": 270336,
+      "rows": 256,
+      "cols": 1024,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.mlp.gate.weight",
+      "offset": 540672,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.mlp.up.weight",
+      "offset": 811008,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.0.n1.w",
+      "offset": 1081344,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.0.n2.w",
+      "offset": 1081608,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.1.attn.k.weight",
+      "offset": 1081872,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.attn.o.weight",
+      "offset": 1149456,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.attn.q.weight",
+      "offset": 1217040,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.attn.v.weight",
+      "offset": 1284624,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.mlp.down.weight",
+      "offset": 1352208,
+      "bytes": 270336,
+      "rows": 256,
+      "cols": 1024,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.mlp.gate.weight",
+      "offset": 1622544,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.mlp.up.weight",
+      "offset": 1892880,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.1.n1.w",
+      "offset": 2163216,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.1.n2.w",
+      "offset": 2163480,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.2.attn.k.weight",
+      "offset": 2163744,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.attn.o.weight",
+      "offset": 2231328,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.attn.q.weight",
+      "offset": 2298912,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.attn.v.weight",
+      "offset": 2366496,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.mlp.down.weight",
+      "offset": 2434080,
+      "bytes": 270336,
+      "rows": 256,
+      "cols": 1024,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.mlp.gate.weight",
+      "offset": 2704416,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.mlp.up.weight",
+      "offset": 2974752,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.2.n1.w",
+      "offset": 3245088,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.2.n2.w",
+      "offset": 3245352,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.3.attn.k.weight",
+      "offset": 3245616,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.attn.o.weight",
+      "offset": 3313200,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.attn.q.weight",
+      "offset": 3380784,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.attn.v.weight",
+      "offset": 3448368,
+      "bytes": 67584,
+      "rows": 256,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.mlp.down.weight",
+      "offset": 3515952,
+      "bytes": 270336,
+      "rows": 256,
+      "cols": 1024,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.mlp.gate.weight",
+      "offset": 3786288,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.mlp.up.weight",
+      "offset": 4056624,
+      "bytes": 270336,
+      "rows": 1024,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "blocks.3.n1.w",
+      "offset": 4326960,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "blocks.3.n2.w",
+      "offset": 4327224,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    },
+    {
+      "name": "embed.weight",
+      "offset": 4327488,
+      "bytes": 17160,
+      "rows": 65,
+      "cols": 256,
+      "k": 99,
+      "flat": false
+    },
+    {
+      "name": "norm.w",
+      "offset": 4344648,
+      "bytes": 264,
+      "rows": 1,
+      "cols": 256,
+      "k": 99,
+      "flat": true
+    }
+  ],
+  "bytes": 4344912
+}
