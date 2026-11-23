@@ -27,6 +27,10 @@ elif [ "$TARGET" = "gate0sd_dbg2_top" ]; then
   RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_dbg2_top.sv"
 elif [ "$TARGET" = "gate0sd_dbg_top" ]; then
   RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv ../rtl/spi_byte_master.sv ../rtl/sd_spi_reader.sv uart_tx.sv gate0sd_dbg_top.sv"
+elif [ "$TARGET" = "sdram_top" ]; then
+  # A2 SDRAM bring-up gate: die-only (no SD lane). CST = board_sdram.cst
+  # (in-package die pads bound by name). See board_sdram.cst override below.
+  RTL="../rtl/sdram_ctrl.sv uart_tx.sv sdram_top.sv"
 elif [ "$TARGET" = "gate0v2_top" ]; then
   RTL="../rtl/f32_pkg.sv ../rtl/k96_vec_dot_v2.sv uart_tx.sv gate0v2_top.sv"
 else
@@ -36,8 +40,23 @@ fi
 # -nodsp: yosys maps the fp32 datapath's mantissa products onto the Gowin DSP
 # macros with operand/enable ties that do not behave like the RTL on silicon
 # (the S2-hold gate-FAIL trace); -nobram/-nolutram are NOT set (BRAM is fine).
+# SDRAM targets use their own CST (die pads bound by name) and a real STA
+# target (the die domain runs 13.5 MHz; the bring-up has no fp32 datapath).
+CST=board.cst
+NPNR_FREQ=7
+if [ "$TARGET" = "sdram_top" ]; then
+  CST=board_sdram.cst
+  NPNR_FREQ=14
+fi
+
+# post-synth guard (the "no silent regression" policy): the flow must not
+# have inferred ANY Gowin DSP macro.
 yosys -ql gate_synth.log -p "read_verilog -sv $RTL; synth_gowin -top $TARGET -json gate.json -family gw2a -nodsp"
+DSPS=$(grep -oE '"DSP[0-9A-Z]+' gate.json | sort -u | wc -l)
+if [ "$DSPS" != "0" ]; then
+  echo "FAIL: gate.json contains DSP cells ($(grep -oE '\"DSP[0-9A-Z]*' gate.json | sort -u | tr '\n' ' '))"; exit 1
+fi
 nextpnr-himbaechel --json gate.json --device GW2AR-LV18QN88C8/I7 \
-  --vopt family=GW2A-18C --vopt cst=board.cst --freq 7 --write gate_pnr.json
+  --vopt family=GW2A-18C --vopt cst=$CST --freq $NPNR_FREQ --write gate_pnr.json
 gowin_pack -c -d GW2A-18C -o $TARGET.fs gate_pnr.json
 echo "$TARGET.fs written; flash: openFPGALoader --board tangnano20k $TARGET.fs"
