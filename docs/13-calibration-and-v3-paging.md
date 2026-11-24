@@ -513,6 +513,56 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
 +    it. NOTE: taps now dump to probes/k9tap on Matrix (the /tmp cleaner
 +    raced dumps twice).
 
+- **2026-11-23 — first GLM-5.3-Flash v3 stream on the A9 (CPU), and the GPU
+  runtime regression that had been read as "pageable copies".**
+  - **The GPU crashes are a ROCm 10.1.0 runtime regression**, not pageable
+    copies (docs/16 §6.1 has the correction: AMD TheRock #10048, a GPF at
+    `libamdhip64+0x778f68`). ROCm went 7.2.4 → 10.1 on 2026-11-16. The fix
+    needs no root: AMD's ROCm 10.0.0 runtime under `~/rocm-runtimes`,
+    selected with `LD_LIBRARY_PATH`. On it, eager `-ngl 99` is back to the
+    11-09 numbers (OLMoE: prompt 715.9 t/s, generation 128.6 t/s, the exact
+    eager text).
+  - **Streaming on the GPU is broken today**, even on the good runtime and
+    the untouched 11-09 binaries: `K9_RESIDENT=1 -ngl 99` gives the ~33 t/s,
+    no-text signature in every mode, while the coherence probe
+    (`probes/hmm_divergence_test`, `SKIP_UNREG=1`) passes 3/3 on ROCm 10.0.
+    Open; cause unknown (the 11-09 green was on ROCm 7.2.4 with the stock
+    GTT pool).
+  - **Streaming on the CPU is exact**: build-cpu, `-ngl 0`,
+    `K9_RESIDENT=1` → token-identical to eager on OLMoE.
+  - **Fork 101e412a8: parallel expert-page decode.** `moe_ensure_ids`
+    decoded a call's pages one after another on one thread (about 2 cores
+    busy on a 32-thread machine). Pages are independent rANS lanes, so they
+    now decode on a pool. Gate: still byte-identical; OLMoE prompt
+    9.3 → 22.7 t/s.
+  - **The 5.3-Flash result** (`build-cpu/bin/llama-cli -ngl 0 -lm mmap -c
+    2048 -ub 512`, `K9_RESIDENT=1 K9_BUDGET_GIB=64`): prompt "The capital of
+    France is", 24 tokens, correct ("… The answer is Paris."), **wall 446 s,
+    prompt 0.2 t/s, generation 0.1 t/s**, RSS flat at about 93 GB (the 64 GiB
+    expert budget plus about 29 GB of non-expert weights and buffers). With
+    the sequential decode the same run had produced nothing after 633 s.
+  - **Why it is slow: the container's page geometry.** Expert tensors have
+    255 pages of 2314 rows (gate/up) or 4627 rows (down), about 1.13 experts
+    per page, and page boundaries do not line up with expert boundaries, so
+    one expert touches one or two pages (about 10 MB at Q8_0, 6.6 MB encoded)
+    per tensor. A token selects 8 × 42 experts, about 630 page touches; the
+    64 GiB budget holds about 19% of the 332 GB of expert pages.
+  - **Levers, in order:** (1) per-lane decode speed — the rANS lane is the
+    serial unit, and the fork's C++ lane decoder has never been measured
+    against the vectorized C coder in `rans_fast.c` (46.8× the Python one);
+    (2) expert-aligned pages at build time (`page_rows` 2048 / 4096, 288
+    pages) removes the ~1.9× overlap, at the price of a pass-1 re-encode
+    (about 2 h); (3) a larger budget, which is RAM-bound at roughly 80 GiB.
+    Together these are worth maybe 3–5×, which is still under 1 t/s.
+    Interactive 5.3-Flash on this box most likely needs the model to fit
+    resident (the REAP + K9 rung), not faster paging.
+  - **Build note:** the fork's server Web UI can no longer be provisioned —
+    the HF bucket revision `b11987` the source pins is gone and `latest` has
+    a different layout, so `scripts/ui-assets.cmake` fails its validation.
+    Build the UI locally (`-DLLAMA_BUILD_UI=ON`; node and npm are installed).
+    The ROCm 10.1-SDK rebuild of `build-hip-a9` is parked half-linked in
+    `build-hip-a9/bin-rocm101-partial`; `bin/` is the 11-09 build.
+
 ## 3. Sequencing
 1. Track A experiment 1.3.1 (imatrix) on 1.5B first; gate on ppl improvement.
 2. If ≥2×, scale to the GLM body and re-run the battery.
