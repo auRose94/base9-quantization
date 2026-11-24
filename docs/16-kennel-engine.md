@@ -163,7 +163,8 @@ build.rs, embedded code object, `hipModuleLoadData`) → bit-exact compare.
 Measured: digits decode 849-861 MB/s lane-parallel (debug build; the
 python reference is 130-165 MB/s single-lane), CPU dequant ~1.3 GW/s,
 **kernel 188-191 GB/s effective of ~200 realistic** — the wheel works.
-Pageable-copy caveats below dominate everything else.
+The copy caveats in §6.1 were later shown to be a ROCm 10.1.0 runtime regression
+(corrected 2026-11-23); the wheel itself is unaffected.
 
 The gate's first catch was our own bug: the CPU dequant chunked by rows
 but indexed scales with the chunk-LOCAL row — every chunk after the first
@@ -174,8 +175,32 @@ k5/k3 containers also exposed a stale spec line: docs/12 says k ≥ 9 but
 the published extreme rungs use k=5/k=3 — kennel accepts odd k ∈ 3..=255;
 docs/12 should be corrected (its own preamble: code wins).
 
-### 6.1 ROCm 10.1 / gfx1151 pageable-copy bug (found the hard way)
+### 6.1 ROCm 10.1.0 runtime regression (first misdiagnosed as a pageable-copy bug)
 
+> **CORRECTION (2026-11-23): the diagnosis in this section was wrong.** The
+> crashes were never pageable-copy or allocation-order effects. Every crash —
+> kennel's (pinned staging; stack `hipMemcpy` ← `Staging::upload`) and the
+> llama.cpp fork's (once under `hipGraphInstantiate`, once under
+> `hipDeviceSynchronize`) — is a general protection fault at the same offset
+> `libamdhip64.so.7.16.0-4f6d503[778f68,…]`, the fingerprint of
+> [ROCm/TheRock #10048](https://github.com/ROCm/TheRock/issues/10048): a
+> regression in the ROCm 10.1.0 runtime (libamdhip64 7.16.0 against 7.15.26333
+> in 10.0.0) in which about half of all processes fault on first use. The
+> evidence below is kept as the record of how a ~50 % per-process flake was
+> misread as structure.
+>
+> **Fix, no root needed:** run on AMD's ROCm 10.0.0 runtime —
+> `therock-dist-linux-gfx1151-10.0.0.tar.gz` from
+> https://stable.repo.amd.com/rocm/core/tarball/, extracted under
+> `~/rocm-runtimes/`, selected with
+> `LD_LIBRARY_PATH=~/rocm-runtimes/therock-10.0.0-gfx1151/lib` (DT_RUNPATH
+> loses to the variable). Measured with it: the two flint k5 M1 gates 10/10,
+> 0 faults, GPU memory unchanged — the clean-boot validation this section
+> asked for. The four standing rules below are harmless hygiene but not
+> load-bearing. Diagnose from coredumps (`coredumpctl dump`, then gdb with
+> debuginfod off) instead of re-running crash experiments.
+
+The record of the misdiagnosis:
 Raw pageable `hipMemcpy` HtoD **intermittently SIGSEGVs inside
 libamdhip64** (7-frame internal stack, always `hipMemcpy`), roughly
 VA-layout dependent (flaky per run: ~50% on big transfers this session).
@@ -204,10 +229,12 @@ kennel's standing rules (in code + this doc):
 4. Never let a GPU process die mid-copy: panics unwind (Drops free), but
    SIGSEGV leaks — clean error paths are load-bearing for driver health.
 
-**Next-session validation (clean boot, measure FIRST):** run
-`hip::tests::va_*` + the three gates ×10 each; record per-path rates for
-chunked-vs-single pageable and pinned staging. If clean-boot pinned
-staging is 0/30 crashes, M1 stands as-is; if it still flakes, escalate to
-`hipMemcpyAsync` + explicit stream, then `hipHostRegister`ed sources, and
-file the upstream issue (ROCm 10.1, gfx1151, APU GTT, repro suite in
-`rs/crates/kennel/src/hip.rs::tests`).
+**Validation, as written on 2026-11-18 (DONE 2026-11-23 — see the correction
+at the top of this section):** run `hip::tests::va_*` + the three gates ×10
+each; record per-path rates for chunked-vs-single pageable and pinned staging.
+If clean-boot pinned staging is 0/30 crashes, M1 stands as-is; if it still
+flakes, escalate to `hipMemcpyAsync` + explicit stream, then `hipHostRegister`ed
+sources, and file the upstream issue (ROCm 10.1, gfx1151, APU GTT, repro suite
+in `rs/crates/kennel/src/hip.rs::tests`). Result: on the system ROCm 10.1.0 the
+gates pass 1–2 of 10 (with or without `HSA_ENABLE_SDMA=0`); on the ROCm 10.0.0
+runtime 10 of 10. The destructive `va_*` ladder was deliberately NOT re-run.
