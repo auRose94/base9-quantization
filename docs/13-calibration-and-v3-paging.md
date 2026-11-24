@@ -535,26 +535,96 @@ sidesteps the ent8-does-not-split finding from the P1 prototype.
     busy on a 32-thread machine). Pages are independent rANS lanes, so they
     now decode on a pool. Gate: still byte-identical; OLMoE prompt
     9.3 → 22.7 t/s.
-  - **The 5.3-Flash result** (`build-cpu/bin/llama-cli -ngl 0 -lm mmap -c
-    2048 -ub 512`, `K9_RESIDENT=1 K9_BUDGET_GIB=64`): prompt "The capital of
-    France is", 24 tokens, correct ("… The answer is Paris."), **wall 446 s,
-    prompt 0.2 t/s, generation 0.1 t/s**, RSS flat at about 93 GB (the 64 GiB
-    expert budget plus about 29 GB of non-expert weights and buffers). With
-    the sequential decode the same run had produced nothing after 633 s.
-  - **Why it is slow: the container's page geometry.** Expert tensors have
-    255 pages of 2314 rows (gate/up) or 4627 rows (down), about 1.13 experts
-    per page, and page boundaries do not line up with expert boundaries, so
-    one expert touches one or two pages (about 10 MB at Q8_0, 6.6 MB encoded)
-    per tensor. A token selects 8 × 42 experts, about 630 page touches; the
-    64 GiB budget holds about 19% of the 332 GB of expert pages.
-  - **Levers, in order:** (1) per-lane decode speed — the rANS lane is the
-    serial unit, and the fork's C++ lane decoder has never been measured
-    against the vectorized C coder in `rans_fast.c` (46.8× the Python one);
-    (2) expert-aligned pages at build time (`page_rows` 2048 / 4096, 288
-    pages) removes the ~1.9× overlap, at the price of a pass-1 re-encode
-    (about 2 h); (3) a larger budget, which is RAM-bound at roughly 80 GiB.
-    Together these are worth maybe 3–5×, which is still under 1 t/s.
-    Interactive 5.3-Flash on this box most likely needs the model to fit
+  - **The 5.3-Flash result as first measured — and why its text was
+    wrong.** `build-cpu/bin/llama-cli -ngl 0 -lm mmap -c 2048 -ub 512`,
+    `K9_RESIDENT=1 K9_BUDGET_GIB=64`: prompt "The capital of France is",
+    24 tokens, wall 446 s, generation 0.1 t/s, RSS flat at about 93 GB.
+    It printed "… The answer is Paris.", which was computed from the
+    wrong weights.
+  - **Bug: the residency hook read the expert-selection tensor as
+    packed.** Sigmoid-gated routing (GLM-5.3-Flash, OLMoE) hands
+    `mul_mat_id` a **strided view** — a slice of the full sorted expert
+    list, row stride 288 experts rather than 8 (`ids ne=8,2 nb=4,1152`).
+    For every batch with more than one token the hook supplied the pages
+    of the wrong experts for tokens 2..n, and the kernel read whatever
+    those pages held. **The output depended on which pages happened to be
+    resident**: 64 GiB said "The answer is Paris", 48 GiB said something
+    else, with every page provided it said a third thing. Present since
+    M3 landed (fork 06a164d16) and invisible to the small-model gate,
+    because OLMoE's prompt selects enough experts to want every page of
+    every tensor. Single-token decode was always right. **Fix (fork
+    0213c8115):** the hook takes the ids strides; the HIP call site
+    gathers a packed copy first. Afterwards 5.3-Flash gives the same text
+    at 48 GiB, at 64 GiB, with the NVMe cache off, and with every page
+    provided. 5.3-Flash has no eager reference on this box (its Q8_0 form
+    is 332 GB), so that budget-independence, backed by OLMoE's
+    byte-identity, is its gate. The other expert-id readers were audited:
+    the scheduler's fallback leg indexes through the strides, and the
+    MoE-cache leg uses upstream's contiguous selection list.
+  - **Model layout, for the counts below.** The GGUF has 46 blocks: 3
+    dense (`blk.0`–`2`), 42 mixture-of-experts (`blk.3`–`44`: 288 routed
+    + 1 shared expert, 8 used, hidden 4096, expert FF 2048), and
+    `blk.45` = the multi-token-prediction draft block
+    (`nextn_predict_layers = 1`; the loader counts effective layers
+    without it). A forward pass makes 126 hook calls: 42 layers × 3
+    expert tensors.
+  - **Why it is slow: the container's page geometry.** Expert tensors
+    have 255 pages of 2314 rows (gate/up, 4096 columns) or 4627 rows
+    (down, 2048 columns) — about 1.13 or 2.26 experts per page, with page
+    boundaries unrelated to expert boundaries, so each selected expert
+    spans one or two pages of about 10 MB at Q8_0 (6.6 MB encoded). A
+    token therefore touches about 1,900 pages (8 × 42 experts × 3 tensors
+    × ~1.9), close to 19 GB; the 48 GiB budget holds about 15% of the
+    332 GB of expert pages, and by measurement 7 of the 15 pages a
+    layer-tensor wants are in RAM and 7 come from the NVMe — about 8.8 GB
+    per token at the drive's 5–6 GB/s for parallel 10 MB reads.
+  - **NVMe tier for decoded pages** (rose's idea; fork 616d28a84,
+    `K9_PAGE_CACHE=DIR`). `region.bin` is a sparse file laid out exactly
+    like the RAM region, so an evicted page is read back (~13 ms) instead
+    of decoded again (~56 ms of one core). `pages.idx` holds one bitmap
+    per managed tensor and survives restarts; each record carries the
+    tensor's region offset and row layout, so a page is only trusted
+    when it sits where it was written. At open, eight cached pages are
+    decoded fresh and compared, and any mismatch discards the index (a
+    re-export under the same name, or a damaged page — verified by
+    overwriting one). Reads take one of two paths by cache size: over
+    8 GiB the cache cannot sit in RAM, so pages are read `O_DIRECT` (16%
+    less time per fill than a buffered read on 5.3-Flash, and nothing
+    lands in the file cache to press on a memory limit); a small cache
+    is read buffered and left in the file cache, so repeat reads are
+    memory copies (OLMoE warm: 10 s against 31 s).
+  - **Scales, decoded once per process — and what that cost.** A managed
+    tensor kept its scales as the whole-tensor float array: 144 MiB for a
+    288-expert tensor, **18.1 GiB over 5.3-Flash**, decoded on one thread
+    the first time the tensor was used (~0.24 s × 126 tensors ≈ 30 s of
+    every launch), and never freed on unload. ent8 scales now stay as
+    codes plus a 256-entry table (**4.5 GiB**, the same floats), decoded
+    up front on the pool (~2 s).
+  - **Where it stands** (fork 616d28a84; 48 GiB expert budget; cache
+    warm; the run above): **wall 446 s → 160 s, peak RSS ~93 GB →
+    70.8 GB**, same text as every post-fix run. Load ~15 s; the first
+    generated token a little under a minute after that; **3.45 s per token
+    (0.3 t/s), of which 1.65 s is pages read from the NVMe**. OLMoE is
+    byte-identical
+    to eager cold, warm and with everything resident, and after a
+    deliberately damaged cached page (detected, index discarded, decoded
+    from source).
+  - **Measured and set aside:** the lane decoder (off the per-token path
+    once pages are read back instead of decoded); two-expert pages at
+    build time (no gain under the 255-page cap — the same bytes move);
+    a 64 GiB instead of a 48 GiB budget (1.42 against 1.63 s of fill per
+    token, for 13 GB more RAM).
+  - **Levers that remain:** (1) one expert per page — 288 lanes, over the
+    u8 lane cap of 255, so it needs a format change plus a pass-1
+    re-encode — would move about 45% fewer bytes per token; (2) the 13 GB
+    the scales gave back can go to the expert budget at the old RSS;
+    (3) this fork's `llama-cli` is a client of an in-process server: it
+    runs two 2-token warmups (`--no-warmup` removes one) and the
+    chat-templated prompt as three passes (6 + 3 + 3 tokens here), each
+    fetching its own expert pages — about 14 s + 43 s before the first
+    token. All of it stays under about 0.5 t/s on this box: the token is
+    bound by expert bytes that are not in RAM, which a GPU would not
+    change. Interactive 5.3-Flash most likely needs the model to fit
     resident (the REAP + K9 rung), not faster paging.
   - **Build note:** the fork's server Web UI can no longer be provisioned —
     the HF bucket revision `b11987` the source pins is gone and `latest` has
